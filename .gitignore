@@ -37,6 +37,7 @@ out/
 .vscode/
 # 보안 설정 파일 무시 (API 키, DB 비밀번호 등)
 src/main/resources/application.yml
+.env
 
 # Claude Code 관련 개인 설정 및 진행 상황 파일
 CLAUDE.md

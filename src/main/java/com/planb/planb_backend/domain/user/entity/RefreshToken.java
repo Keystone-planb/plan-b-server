@@ -2,14 +2,11 @@ package com.planb.planb_backend.domain.user.entity;
 
 import jakarta.persistence.*;
 import lombok.*;
-import org.springframework.data.annotation.CreatedDate;
-import org.springframework.data.jpa.domain.support.AuditingEntityListener;
 
 import java.time.LocalDateTime;
 
 @Entity
-@Table(name = "refresh_tokens")
-@EntityListeners(AuditingEntityListener.class)
+@Table(name = "refresh_token")
 @Getter
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
 @Builder
@@ -20,17 +17,19 @@ public class RefreshToken {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
-    @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "user_id", nullable = false)
+    // users 테이블과 1:1 관계 (유저당 토큰 1개)
+    @OneToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "user_id", nullable = false, unique = true)
     private User user;
 
-    @Column(name = "token", length = 255, nullable = false)
+    @Column(nullable = false, length = 512)
     private String token;
 
-    @Column(name = "expires_at", nullable = false)
-    private LocalDateTime expiresAt;
+    @Column(nullable = false)
+    private LocalDateTime expiryDate;
 
-    @CreatedDate
-    @Column(name = "created_at", updatable = false)
-    private LocalDateTime createdAt;
+    // 만료 여부 확인 유틸 메서드
+    public boolean isExpired() {
+        return LocalDateTime.now().isAfter(expiryDate);
+    }
 }

@@ -1,6 +1,6 @@
 package com.planb.planb_backend.auth;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
+import tools.jackson.databind.ObjectMapper;
 import com.planb.planb_backend.domain.user.dto.AuthResponse;
 import com.planb.planb_backend.domain.user.entity.User;
 import com.planb.planb_backend.domain.user.repository.UserRepository;

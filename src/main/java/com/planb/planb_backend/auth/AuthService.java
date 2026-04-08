@@ -4,6 +4,7 @@ import com.planb.planb_backend.domain.user.dto.AuthResponse;
 import com.planb.planb_backend.domain.user.dto.LoginRequest;
 import com.planb.planb_backend.domain.user.dto.SignupRequest;
 import com.planb.planb_backend.domain.user.entity.RefreshToken;
+import com.planb.planb_backend.domain.user.entity.Role;
 import com.planb.planb_backend.domain.user.entity.User;
 import com.planb.planb_backend.domain.user.repository.RefreshTokenRepository;
 import com.planb.planb_backend.domain.user.repository.UserRepository;
@@ -35,7 +36,8 @@ public class AuthService {
                 .email(request.getEmail())
                 .password(passwordEncoder.encode(request.getPassword()))
                 .nickname(request.getNickname())
-                .provider("LOCAL")
+                .provider("local")
+                .role(Role.USER)
                 .build();
 
         User savedUser = userRepository.save(user);
@@ -67,7 +69,7 @@ public class AuthService {
         refreshTokenRepository.save(RefreshToken.builder()
                 .user(user)
                 .token(refreshToken)
-                .expiresAt(LocalDateTime.now().plusSeconds(jwtUtil.getRefreshTokenExpiration() / 1000))
+                .expiryDate(LocalDateTime.now().plusSeconds(jwtUtil.getRefreshTokenExpiration() / 1000))
                 .build());
 
         return AuthResponse.ofLogin(accessToken, refreshToken, user.getId(), user.getNickname());

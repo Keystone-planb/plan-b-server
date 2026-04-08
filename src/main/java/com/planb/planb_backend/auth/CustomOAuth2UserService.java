@@ -1,5 +1,6 @@
 package com.planb.planb_backend.auth;
 
+import com.planb.planb_backend.domain.user.entity.Role;
 import com.planb.planb_backend.domain.user.entity.User;
 import com.planb.planb_backend.domain.user.repository.UserRepository;
 import lombok.RequiredArgsConstructor;
@@ -59,8 +60,9 @@ public class CustomOAuth2UserService extends DefaultOAuth2UserService {
                 .orElseGet(() -> userRepository.save(User.builder()
                         .email(finalEmail)
                         .nickname(finalNickname)
-                        .provider(registrationId)
+                        .provider(registrationId.toLowerCase())
                         .providerId(finalProviderId)
+                        .role(Role.USER)
                         .build()));
 
         // userId를 attributes에 담아서 SuccessHandler로 전달
