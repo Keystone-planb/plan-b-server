@@ -2,37 +2,51 @@ package com.planb.planb_backend.auth;
 
 import com.planb.planb_backend.domain.user.dto.AuthResponse;
 import com.planb.planb_backend.domain.user.dto.LoginRequest;
-import com.planb.planb_backend.domain.user.dto.SignupRequest;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
-import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
+import java.util.Map;
+
 @RestController
-@RequestMapping("/api/v1/auth")
+@RequestMapping("/api/auth")
 @RequiredArgsConstructor
 public class AuthController {
 
     private final AuthService authService;
 
     /**
-     * 일반 회원가입
-     * POST /api/v1/auth/signup
-     */
-    @PostMapping("/signup")
-    public ResponseEntity<AuthResponse> signup(@Valid @RequestBody SignupRequest request) {
-        AuthResponse response = authService.signup(request);
-        return ResponseEntity.status(HttpStatus.CREATED).body(response);
-    }
-
-    /**
-     * 일반 로그인
-     * POST /api/v1/auth/login
+     * 이메일 로그인
+     * POST /api/auth/login
      */
     @PostMapping("/login")
     public ResponseEntity<AuthResponse> login(@Valid @RequestBody LoginRequest request) {
         AuthResponse response = authService.login(request);
         return ResponseEntity.ok(response);
+    }
+
+    /**
+     * Access Token 재발급
+     * POST /api/auth/refresh
+     * Body: { "refreshToken": "..." }
+     */
+    @PostMapping("/refresh")
+    public ResponseEntity<AuthResponse> refresh(@RequestBody Map<String, String> body) {
+        String refreshToken = body.get("refreshToken");
+        AuthResponse response = authService.refreshToken(refreshToken);
+        return ResponseEntity.ok(response);
+    }
+
+    /**
+     * 로그아웃
+     * POST /api/auth/logout
+     * Body: { "refreshToken": "..." }
+     */
+    @PostMapping("/logout")
+    public ResponseEntity<Map<String, String>> logout(@RequestBody Map<String, String> body) {
+        String refreshToken = body.get("refreshToken");
+        authService.logout(refreshToken);
+        return ResponseEntity.ok(Map.of("message", "로그아웃 되었습니다."));
     }
 }

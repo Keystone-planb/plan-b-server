@@ -24,6 +24,18 @@ public class AuthResponse {
                 .build();
     }
 
+    // Access Token 재발급 응답 (refreshToken 엔드포인트)
+    public static AuthResponse ofAccessToken(String accessToken, Long userId, String nickname) {
+        return AuthResponse.builder()
+                .success(true)
+                .message("Access Token이 재발급되었습니다.")
+                .accessToken(accessToken)
+                .tokenType("Bearer")
+                .userId(userId)
+                .nickname(nickname)
+                .build();
+    }
+
     // 로그인 성공 응답
     public static AuthResponse ofLogin(String accessToken, String refreshToken, Long userId, String nickname) {
         return AuthResponse.builder()
