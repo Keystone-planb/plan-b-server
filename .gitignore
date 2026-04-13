@@ -36,7 +36,9 @@ out/
 ### VS Code ###
 .vscode/
 # 보안 설정 파일 무시 (API 키, DB 비밀번호 등)
-src/main/resources/application.yml
+# application.yml      → 환경변수 플레이스홀더만 남아 있어 커밋 가능
+# application-local.yml → 실제 시크릿 값 포함, 절대 커밋 금지
+src/main/resources/application-local.yml
 .env
 
 # Claude Code 관련 개인 설정 및 진행 상황 파일

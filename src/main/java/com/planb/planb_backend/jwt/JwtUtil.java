@@ -9,7 +9,7 @@ import javax.crypto.SecretKey;
 import java.nio.charset.StandardCharsets;
 import java.util.Date;
 
-@Component
+// JwtProvider로 대체됨 — @Component 제거하여 빈 등록 방지
 public class JwtUtil {
 
     private final SecretKey secretKey;
