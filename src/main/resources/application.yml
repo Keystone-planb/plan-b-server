@@ -75,6 +75,15 @@ openai:
 google:
   places-api-key: ${GOOGLE_PLACES_API_KEY}
 
+logging:
+  level:
+    # Spring Security 필터 체인 흐름 (어느 필터에서 막히는지 확인)
+    org.springframework.security: DEBUG
+    # 우리가 만든 JWT 필터 로그
+    com.planb.planb_backend.jwt: DEBUG
+    # MVC 요청 매핑 결과 (URL이 어느 컨트롤러에 매핑됐는지 확인)
+    org.springframework.web.servlet.DispatcherServlet: DEBUG
+
 #ECS 헬스체크 설정
 management:
   endpoints:

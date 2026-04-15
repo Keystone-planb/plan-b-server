@@ -1,0 +1,31 @@
+### 1. 장소 검색 (query와 type으로 검색)
+GET http://localhost:8080/api/places/search?query=에버랜드&type=THEME
+Authorization: Bearer {{auth_token}}
+
+### 2. 일정에 장소 추가 (trips/1/days/1 숫자를 본인 환경에 맞게 변경)
+POST http://localhost:8080/api/trips/1/days/1/locations
+Authorization: Bearer {{auth_token}}
+Content-Type: application/json
+
+{
+  "place_id": "ChIJN1t_tDeuEmsRUsoyG83frY4",
+  "name": "에버랜드",
+  "arrival_time": "10:00",
+  "memo": "오픈런 필수!"
+}
+
+### 3. 장소 상세 보기 (3-Tag)
+GET http://localhost:8080/api/places/ChIJN1t_tDeuEmsRUsoyG83frY4
+Authorization: Bearer {{auth_token}}
+
+### 4. AI 기반 리뷰 요약
+GET http://localhost:8080/api/places/ChIJN1t_tDeuEmsRUsoyG83frY4/summary
+Authorization: Bearer {{auth_token}}
+
+### 5. 정보 신선도 배지 데이터
+GET http://localhost:8080/api/places/ChIJN1t_tDeuEmsRUsoyG83frY4/freshness
+Authorization: Bearer {{auth_token}}
+//status (신선도 상태): 프론트엔드(화면)에서 배지 색깔을 결정하는 핵심 값입니다.
+//FRESH (초록색 배지 🟢): 최근 1주일 내에 업데이트된 믿을 수 있는 정보
+//NORMAL (노란색 배지 🟡): 한두 달 정도 지난 평범한 정보
+//STALE (빨간색 배지 🔴): 업데이트된 지 6개월이 넘어서 의심해 봐야 하는 정보

@@ -31,4 +31,7 @@ public class TripPlace {
 
     @Column(name = "visit_order")
     private int visitOrder;     // 방문 순서
+
+    @Column(length = 500)
+    private String memo;        // 사용자 메모
 }

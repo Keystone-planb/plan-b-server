@@ -1,0 +1,80 @@
+### =========================================
+### 🔐 인증(Auth) 및 회원(User) API 테스트
+### =========================================
+
+### 1. 이메일 인증 발송 (POST)
+POST http://localhost:8080/api/users/email/send
+Content-Type: application/json
+
+{
+  "email": "dony615@naver.com"
+}
+
+
+### 2. 이메일 코드 검증 (POST)
+# 1번에서 발송된 코드를 확인하여 입력합니다.
+POST http://localhost:8080/api/users/email/verify
+Content-Type: application/json
+
+{
+  "email": "dony615@naver.com",
+  "code": "코드작성"
+}
+
+
+### 3. 최종 회원가입 (POST)
+POST http://localhost:8080/api/users/signup
+Content-Type: application/json
+
+{
+  "email": "dony615@naver.com",
+  "password": "myPassword123!",
+  "nickname": "태형"
+}
+
+
+### 4. 로그인 (POST) ⭐️ 핵심: 여기서 토큰을 받아옵니다!
+POST http://localhost:8080/api/auth/login
+Content-Type: application/json
+
+{
+  "email": "dony615@naver.com",
+  "password": "myPassword123!"
+}
+
+> {%
+    // 로그인 성공 시 발급된 accessToken을 전역 변수로 자동 저장합니다.
+    client.global.set("auth_token", response.body.accessToken);
+
+    // (선택) 만약 응답에 refreshToken도 있다면 아래처럼 함께 저장해 둘 수 있습니다.
+    // client.global.set("refresh_token", response.body.refreshToken);
+%}
+
+
+### =========================================
+### 👇 아래부터는 로그인(4번) 후 발급된 토큰이 필요합니다.
+### =========================================
+
+### 5. 내 정보 조회 (GET)
+GET http://localhost:8080/api/users/me
+Authorization: Bearer {{auth_token}}
+
+
+### 6. 토큰 갱신 (POST)
+# Access Token이 만료되었을 때 Refresh Token을 보내서 새로 발급받습니다.
+POST http://localhost:8080/api/auth/refresh
+Content-Type: application/json
+
+{
+  "refreshToken": "{{refresh_token}}"
+}
+
+
+### 7. 로그아웃 (POST)
+POST http://localhost:8080/api/auth/logout
+Authorization: Bearer {{auth_token}}
+
+
+### 8. 회원 탈퇴 (DELETE)
+DELETE http://localhost:8080/api/users/withdraw
+Authorization: Bearer {{auth_token}}

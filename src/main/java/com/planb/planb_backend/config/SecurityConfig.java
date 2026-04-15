@@ -4,6 +4,7 @@ import com.planb.planb_backend.auth.CustomOAuth2UserService;
 import com.planb.planb_backend.auth.OAuth2SuccessHandler;
 import com.planb.planb_backend.jwt.JwtFilter;
 import com.planb.planb_backend.jwt.JwtProvider;
+import jakarta.servlet.DispatcherType;
 import jakarta.servlet.http.HttpServletResponse;
 import lombok.RequiredArgsConstructor;
 import org.springframework.context.annotation.Bean;
@@ -42,6 +43,11 @@ public class SecurityConfig {
             )
 
             .authorizeHttpRequests(auth -> auth
+                // Spring Security 7: shouldFilterAllDispatcherTypes=true 기본값
+                // Tomcat이 오류 발생 시 /error 경로로 ERROR 타입 재디스패치 수행
+                // requestMatchers("/error")는 MvcRequestMatcher를 사용하여 ERROR 디스패치 타입을
+                // 제대로 매칭 못하는 경우가 있으므로, dispatcherTypeMatchers로 명시적 처리
+                .dispatcherTypeMatchers(DispatcherType.ERROR).permitAll()
                 .requestMatchers(HttpMethod.POST, "/api/users/signup").permitAll()
                 .requestMatchers(HttpMethod.POST, "/api/auth/login").permitAll()
                 .requestMatchers(HttpMethod.POST, "/api/auth/refresh").permitAll()

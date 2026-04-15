@@ -1,9 +1,6 @@
 package com.planb.planb_backend.domain.trip.controller;
 
-import com.planb.planb_backend.domain.trip.dto.CreateTripRequest;
-import com.planb.planb_backend.domain.trip.dto.TripDetailResponse;
-import com.planb.planb_backend.domain.trip.dto.TripSummaryResponse;
-import com.planb.planb_backend.domain.trip.dto.UpdateTripRequest;
+import com.planb.planb_backend.domain.trip.dto.*;
 import com.planb.planb_backend.domain.trip.service.TripService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
@@ -70,5 +67,18 @@ public class TripController {
             Authentication authentication) {
         tripService.deleteTrip(authentication.getName(), id);
         return ResponseEntity.noContent().build();
+    }
+
+    /**
+     * POST /api/trips/{id}/days/{day}/locations — 특정 일차에 장소 추가
+     */
+    @PostMapping("/{id}/days/{day}/locations")
+    public ResponseEntity<AddLocationResponse> addLocation(
+            @PathVariable Long id,
+            @PathVariable int day,
+            @Valid @RequestBody AddLocationRequest request,
+            Authentication authentication) {
+        return ResponseEntity.status(HttpStatus.CREATED)
+                .body(tripService.addLocation(authentication.getName(), id, day, request));
     }
 }

@@ -1,11 +1,11 @@
 package com.planb.planb_backend.domain.trip.service;
 
-import com.planb.planb_backend.domain.trip.dto.CreateTripRequest;
-import com.planb.planb_backend.domain.trip.dto.TripDetailResponse;
-import com.planb.planb_backend.domain.trip.dto.TripSummaryResponse;
-import com.planb.planb_backend.domain.trip.dto.UpdateTripRequest;
+import com.planb.planb_backend.domain.trip.dto.*;
 import com.planb.planb_backend.domain.trip.entity.Itinerary;
 import com.planb.planb_backend.domain.trip.entity.Trip;
+import com.planb.planb_backend.domain.trip.entity.TripPlace;
+import com.planb.planb_backend.domain.trip.repository.ItineraryRepository;
+import com.planb.planb_backend.domain.trip.repository.TripPlaceRepository;
 import com.planb.planb_backend.domain.trip.repository.TripRepository;
 import com.planb.planb_backend.domain.user.entity.User;
 import com.planb.planb_backend.domain.user.repository.UserRepository;
@@ -25,6 +25,8 @@ public class TripService {
 
     private final TripRepository tripRepository;
     private final UserRepository userRepository;
+    private final ItineraryRepository itineraryRepository;
+    private final TripPlaceRepository tripPlaceRepository;
 
     /**
      * POST /api/trips — 여행 계획 생성
@@ -95,6 +97,31 @@ public class TripService {
         User user = findUser(email);
         Trip trip = findTripByOwner(tripId, user);
         tripRepository.delete(trip);
+    }
+
+    /**
+     * POST /api/trips/{id}/days/{day}/locations — 특정 일차에 장소 추가
+     */
+    @Transactional
+    public AddLocationResponse addLocation(String email, Long tripId, int day, AddLocationRequest request) {
+        User user = findUser(email);
+        Trip trip = findTripByOwner(tripId, user);
+
+        Itinerary itinerary = itineraryRepository.findByTripAndDay(trip, day)
+                .orElseThrow(() -> new IllegalArgumentException(day + "일차 일정을 찾을 수 없습니다."));
+
+        int nextOrder = itinerary.getPlaces().size() + 1;
+
+        TripPlace tripPlace = TripPlace.builder()
+                .itinerary(itinerary)
+                .placeId(request.getPlaceId())
+                .name(request.getName())
+                .visitTime(request.getVisitTime())
+                .visitOrder(nextOrder)
+                .memo(request.getMemo())
+                .build();
+
+        return AddLocationResponse.from(tripPlaceRepository.save(tripPlace));
     }
 
     // ── private 헬퍼 ────────────────────────────────────────────────

@@ -1,0 +1,44 @@
+### =========================================
+### ✈️ 여행 계획 (Trip) API 테스트
+### =========================================
+
+### 1. 새로운 여행 계획 생성 (POST)
+POST http://localhost:8080/api/trips
+Authorization: Bearer {{auth_token}}
+Content-Type: application/json
+
+{
+  "title": "부산 2박 3일 힐링 여행 🌊",
+  "startDate": "2026-05-01",
+  "endDate": "2026-05-03",
+  "travelStyles": ["HEALING", "TRENDY"]
+}
+
+
+### 2. 내 여행 목록 확인 (GET)
+GET http://localhost:8080/api/trips
+Authorization: Bearer {{auth_token}}
+
+
+### 3. 상세 일정 조회 (GET)
+# ⚠️ 주의: URL 끝의 '1'은 1번 API에서 생성된 본인의 실제 tripId(여행 번호)로 변경해야 합니다.
+GET http://localhost:8080/api/trips/1
+Authorization: Bearer {{auth_token}}
+
+
+### 4. 여행 계획 수정 (PATCH)
+# ⚠️ 주의: URL 끝의 '1'을 본인의 tripId로 변경하세요.
+PATCH http://localhost:8080/api/trips/1
+Authorization: Bearer {{auth_token}}
+Content-Type: application/json
+
+{
+  "title": "부산 먹방 투어 🍽️",
+  "travelStyles": ["ACTIVE", "LOCAL"]
+}
+
+
+### 5. 여행 계획 삭제 (DELETE)
+# ⚠️ 주의: URL 끝의 '1'을 본인의 tripId로 변경하세요.
+DELETE http://localhost:8080/api/trips/1
+Authorization: Bearer {{auth_token}}
