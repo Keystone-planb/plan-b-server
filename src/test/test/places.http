@@ -25,7 +25,7 @@ Authorization: Bearer {{auth_token}}
 ### 5. 정보 신선도 배지 데이터
 GET http://localhost:8080/api/places/ChIJN1t_tDeuEmsRUsoyG83frY4/freshness
 Authorization: Bearer {{auth_token}}
-//status (신선도 상태): 프론트엔드(화면)에서 배지 색깔을 결정하는 핵심 값입니다.
+//status (신선도 상태): 프론트엔드(화면)에서 배지 색깔을 결정하는 핵심 값
 //FRESH (초록색 배지 🟢): 최근 1주일 내에 업데이트된 믿을 수 있는 정보
 //NORMAL (노란색 배지 🟡): 한두 달 정도 지난 평범한 정보
 //STALE (빨간색 배지 🔴): 업데이트된 지 6개월이 넘어서 의심해 봐야 하는 정보

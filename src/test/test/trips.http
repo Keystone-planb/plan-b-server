@@ -2,32 +2,82 @@
 ### ✈️ 여행 계획 (Trip) API 테스트
 ### =========================================
 
-### 1. 새로운 여행 계획 생성 (POST)
+### =========================================
+### 🎬 시나리오: 여행 뼈대 생성부터 타임라인 완성까지
+### (주의: 이전에 auth.http에서 로그인 버튼을 한 번 눌러서 토큰을 받아둔 상태여야 합니다)
+### =========================================
+
+### [1단계: 유저 액션] 새로운 여행 뼈대 생성
+# 유저가 제목과 날짜를 입력하고 '생성'을 누른다
 POST http://localhost:8080/api/trips
 Authorization: Bearer {{auth_token}}
 Content-Type: application/json
 
 {
-  "title": "부산 2박 3일 힐링 여행 🌊",
-  "startDate": "2026-05-01",
-  "endDate": "2026-05-03",
-  "travelStyles": ["HEALING", "TRENDY"]
+  "title": "제주도 2박 3일 먹방 투어 🍊",
+  "startDate": "2026-06-01",
+  "endDate": "2026-06-03",
+  "travelStyles": ["HEALING", "ACTIVE"]
 }
 
+> {%
+    // 방금 생성된 여행의 ID를 'trip_id'라는 변수에 자동 저장
+    client.global.set("trip_id", response.body.tripId);
+%}
 
-### 2. 내 여행 목록 확인 (GET)
-GET http://localhost:8080/api/trips
+### [2단계: 유저 액션] 일차별 빈 일정 확인 (상세 진입)
+# 서버가 1, 2, 3일차 빈 폴더를 잘 만들어두었는지 확인
+GET http://localhost:8080/api/trips/{{trip_id}}
 Authorization: Bearer {{auth_token}}
 
 
+### [3단계: 유저 액션] 장소 검색
+# 유저가 1일차에 갈 식당을 검색
+GET http://localhost:8080/api/places/search?query=제주 흑돼지
+Authorization: Bearer {{auth_token}}
+
+
+### [4단계: 유저 액션] 장소 추가 (1일차 12:00 - 점심)
+# 검색한 식당을 1일차 12시에 추가 (방문 시간 포함)
+POST http://localhost:8080/api/trips/{{trip_id}}/days/1/locations
+Authorization: Bearer {{auth_token}}
+Content-Type: application/json
+
+{
+  "place_id": "mock-place-002",
+  "name": "제주 흑돼지 맛집",
+  "visitTime": "12:00",
+  "memo": "도착하자마자 첫 끼!"
+}
+
+
+### [5단계: 유저 액션] 또 다른 장소 추가 (1일차 14:00 - 카페)
+# 밥 먹고 갈 카페를 1일차 14시에 추가합니다. (자동으로 visitOrder가 2번이 됩니다)
+POST http://localhost:8080/api/trips/{{trip_id}}/days/1/locations
+Authorization: Bearer {{auth_token}}
+Content-Type: application/json
+
+{
+  "place_id": "mock-place-001",
+  "name": "오션뷰 감성 카페",
+  "visitTime": "14:00",
+  "memo": "바다 보면서 커피 마시기"
+}
+
+
+### [6단계: 유저 액션] 최종 타임라인 확인 (다시 상세 조회)
+# 1일차 데이터 안에 장소 2개가 시간 순서(visitOrder)대로 예쁘게 들어있는지 확인합니다!
+GET http://localhost:8080/api/trips/{{trip_id}}
+Authorization: Bearer {{auth_token}}
+
 ### 3. 상세 일정 조회 (GET)
-# ⚠️ 주의: URL 끝의 '1'은 1번 API에서 생성된 본인의 실제 tripId(여행 번호)로 변경해야 합니다.
+# ⚠️ 주의: URL 끝의 '1'은 1번 API에서 생성된 본인의 실제 tripId(여행 번호)로 변경해야 함
 GET http://localhost:8080/api/trips/1
 Authorization: Bearer {{auth_token}}
 
 
 ### 4. 여행 계획 수정 (PATCH)
-# ⚠️ 주의: URL 끝의 '1'을 본인의 tripId로 변경하세요.
+# ⚠️ 주의: URL 끝의 '1'을 본인의 tripId로 변경
 PATCH http://localhost:8080/api/trips/1
 Authorization: Bearer {{auth_token}}
 Content-Type: application/json
@@ -39,6 +89,6 @@ Content-Type: application/json
 
 
 ### 5. 여행 계획 삭제 (DELETE)
-# ⚠️ 주의: URL 끝의 '1'을 본인의 tripId로 변경하세요.
+# ⚠️ 주의: URL 끝의 '1'을 본인의 tripId로 변경
 DELETE http://localhost:8080/api/trips/1
 Authorization: Bearer {{auth_token}}
