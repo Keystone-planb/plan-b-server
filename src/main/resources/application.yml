@@ -17,6 +17,8 @@ spring:
     redis:
       host: ${SPRING_DATA_REDIS_HOST:localhost}
       port: ${SPRING_DATA_REDIS_PORT:6379}
+      ssl:
+        enabled: ${SPRING_DATA_REDIS_SSL_ENABLED:false} # AWS TLS 암호화 연결 대응
 
   jpa:
     hibernate:
@@ -96,3 +98,6 @@ management:
   endpoint:
     health:
       show-details: never
+  health:
+    redis:
+      enabled: false # Redis 연결 지연으로 인한 ALB 배포 실패 방지
