@@ -2,7 +2,7 @@
 # 1단계: 빌드
 # BE 팀 확인: Gradle, Java 17, gradlew 있음
 # ══════════════════════════════════════════
-FROM gradle:8.5-jdk17-alpine AS builder
+FROM gradle:8.14-jdk17-alpine AS builder
 
 WORKDIR /app
 
