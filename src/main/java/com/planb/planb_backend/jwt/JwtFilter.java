@@ -37,7 +37,8 @@ public class JwtFilter extends OncePerRequestFilter {
         String path = request.getRequestURI();
         boolean skip = PUBLIC_PATHS.contains(path)
                 || path.startsWith("/oauth2/")
-                || path.startsWith("/login/oauth2/");
+                || path.startsWith("/login/oauth2/")
+                || path.startsWith("/actuator/");
         log.debug("[JWT] shouldNotFilter - path: {}, skip: {}", path, skip);
         return skip;
     }
