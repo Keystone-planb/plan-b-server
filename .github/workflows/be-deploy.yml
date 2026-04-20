@@ -57,12 +57,13 @@ jobs:
 
           echo "IMAGE_URI=$IMAGE_URI:$COMMIT_SHA" >> $GITHUB_ENV
 
-      # ── 8. 현재 ECS 태스크 정의 가져오기
+# ── 8. 현재 ECS 태스크 정의 가져오기
       - name: Download current task definition
         run: |
           aws ecs describe-task-definition \
             --task-definition planb-task \
             --query taskDefinition \
+            | jq 'del(.enableFaultInjection)' \
             > task-definition.json
 
       # ── 9. 새 이미지로 태스크 정의 업데이트
