@@ -69,6 +69,7 @@ public class SecurityConfig {
                     userInfo.userService(customOAuth2UserService))
                 .successHandler(oAuth2SuccessHandler)
                 .failureHandler((request, response, exception) -> {
+                    exception.printStackTrace();
                     response.setStatus(HttpServletResponse.SC_UNAUTHORIZED);
                     response.setContentType("application/json;charset=UTF-8");
                     response.getWriter().write("{\"error\": \"소셜 로그인에 실패했습니다.\"}");
