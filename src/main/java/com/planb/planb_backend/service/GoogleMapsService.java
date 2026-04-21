@@ -2,7 +2,6 @@ package com.planb.planb_backend.service;
 
 import com.planb.planb_backend.config.GoogleMapsConfig;
 import com.planb.planb_backend.dto.PlaceSearchResponseDto;
-import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.web.reactive.function.client.WebClient;
@@ -18,13 +17,19 @@ import java.util.stream.Collectors;
  */
 @Slf4j
 @Service
-@RequiredArgsConstructor
 public class GoogleMapsService {
 
     private static final String PLACES_BASE_URL = "https://maps.googleapis.com";
     private static final String TEXT_SEARCH_PATH = "/maps/api/place/textsearch/json";
 
     private final GoogleMapsConfig googleMapsConfig;
+    private final WebClient webClient;
+
+    // WebClient.Builder는 Spring Boot가 자동으로 Bean 등록 → 앱 시작 시 1회만 생성
+    public GoogleMapsService(GoogleMapsConfig googleMapsConfig, WebClient.Builder webClientBuilder) {
+        this.googleMapsConfig = googleMapsConfig;
+        this.webClient = webClientBuilder.baseUrl(PLACES_BASE_URL).build();
+    }
 
     /**
      * 장소 검색
@@ -35,9 +40,7 @@ public class GoogleMapsService {
     public List<PlaceSearchResponseDto> searchPlaces(String query) {
         log.info("[GoogleMaps] 장소 검색 요청 - query: {}", query);
 
-        // 구글 API 호출
-        Map<String, Object> response = WebClient.create(PLACES_BASE_URL)
-                .get()
+        Map<String, Object> response = webClient.get()
                 .uri(uriBuilder -> uriBuilder
                         .path(TEXT_SEARCH_PATH)
                         .queryParam("query", query)
@@ -45,10 +48,20 @@ public class GoogleMapsService {
                         .queryParam("language", "ko")
                         .build())
                 .retrieve()
+                // 4xx: 잘못된 API 키, 요청 파라미터 오류 등
+                .onStatus(status -> status.is4xxClientError(), clientResponse -> {
+                    log.error("[GoogleMaps] 클라이언트 오류 - HTTP {}", clientResponse.statusCode());
+                    return clientResponse.createException();
+                })
+                // 5xx: 구글 서버 내부 오류
+                .onStatus(status -> status.is5xxServerError(), clientResponse -> {
+                    log.error("[GoogleMaps] 구글 서버 오류 - HTTP {}", clientResponse.statusCode());
+                    return clientResponse.createException();
+                })
                 .bodyToMono(Map.class)
                 .block();
 
-        // 응답 상태 확인 (구글 API는 HTTP 200이어도 status 필드로 성공 여부 판단)
+        // 응답 자체가 없는 경우 (타임아웃 등)
         if (response == null) {
             log.error("[GoogleMaps] 응답이 null입니다.");
             throw new RuntimeException("구글 Maps API 응답이 없습니다.");
@@ -57,6 +70,13 @@ public class GoogleMapsService {
         String status = (String) response.get("status");
         log.info("[GoogleMaps] 응답 status: {}", status);
 
+        // ZERO_RESULTS는 정상 케이스 (검색어에 맞는 결과가 없을 뿐)
+        if ("ZERO_RESULTS".equals(status)) {
+            log.info("[GoogleMaps] 검색 결과 없음 - query: {}", query);
+            return Collections.emptyList();
+        }
+
+        // OK 외 나머지(OVER_QUERY_LIMIT, REQUEST_DENIED, INVALID_REQUEST 등)는 오류
         if (!"OK".equals(status)) {
             String errorMessage = (String) response.getOrDefault("error_message", "알 수 없는 오류");
             log.error("[GoogleMaps] API 오류 - status: {}, message: {}", status, errorMessage);
@@ -66,7 +86,6 @@ public class GoogleMapsService {
         // 결과 파싱 및 DTO 변환
         List<Map<String, Object>> results = (List<Map<String, Object>>) response.get("results");
         if (results == null || results.isEmpty()) {
-            log.info("[GoogleMaps] 검색 결과 없음 - query: {}", query);
             return Collections.emptyList();
         }
 
