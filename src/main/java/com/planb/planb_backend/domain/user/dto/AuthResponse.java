@@ -1,5 +1,6 @@
 package com.planb.planb_backend.domain.user.dto;
 
+import com.fasterxml.jackson.annotation.JsonProperty;
 import lombok.Builder;
 import lombok.Getter;
 
@@ -9,10 +10,19 @@ public class AuthResponse {
 
     private boolean success;
     private String message;
+
+    @JsonProperty("access_token")
     private String accessToken;
+
+    @JsonProperty("refresh_token")
     private String refreshToken;
+
+    @JsonProperty("token_type")
     private String tokenType;
+
+    @JsonProperty("user_id")
     private Long userId;
+
     private String nickname;
 
     // 회원가입 성공 응답
