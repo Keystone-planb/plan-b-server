@@ -1,5 +1,6 @@
 package com.planb.planb_backend.domain.place.service;
 
+import com.planb.planb_backend.config.GoogleMapsConfig;
 import com.planb.planb_backend.domain.place.dto.*;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
@@ -19,47 +20,102 @@ import java.util.stream.Collectors;
 public class PlaceService {
 
     private static final String PLACES_BASE_URL = "https://maps.googleapis.com";
+    private static final String TEXT_SEARCH_PATH = "/maps/api/place/textsearch/json";
     private static final String DETAILS_PATH = "/maps/api/place/details/json";
-
-    // 실제 키 미설정 시 서버 시작 실패를 막기 위해 빈 문자열 기본값 사용
-    @Value("${google.places-api-key:}")
-    private String googlePlacesApiKey;
 
     @Value("${openai.api-key:}")
     private String openaiApiKey;
 
+    private final GoogleMapsConfig googleMapsConfig; // google.maps.api-key 사용
     private final WebClient webClient;
 
-    // WebClient.Builder는 Spring Boot가 자동으로 Bean 등록 → 앱 시작 시 1회만 생성
-    public PlaceService(WebClient.Builder webClientBuilder) {
+    public PlaceService(GoogleMapsConfig googleMapsConfig, WebClient.Builder webClientBuilder) {
+        this.googleMapsConfig = googleMapsConfig;
         this.webClient = webClientBuilder.baseUrl(PLACES_BASE_URL).build();
     }
 
     /**
      * GET /api/places/search?query=&lat=&lng=
-     * 장소 검색 (Google Places Text Search API 예정)
+     * 장소 검색 (Google Places Text Search API)
      */
     public PlaceSearchResponse searchPlaces(String query, double lat, double lng) {
         log.info("[Place] 장소 검색 요청 - query: {}, lat: {}, lng: {}", query, lat, lng);
+        // API 키 로드 확인 (보안상 앞 5자리만 출력)
+        log.info("[Place] API 키 로드 확인 - 길이: {}, 앞자리: {}",
+                googleMapsConfig.getApiKey().length(),
+                googleMapsConfig.getApiKey().length() >= 5 ? googleMapsConfig.getApiKey().substring(0, 5) : "짧음(비정상)");
 
-        // TODO: Google Places Text Search API 연동
-        return PlaceSearchResponse.builder()
-                .places(List.of(
-                        PlaceSearchResponse.PlaceItem.builder()
-                                .placeId("mock-place-001")
-                                .name(query + " 카페")
-                                .address("서울특별시 강남구 테헤란로 123")
-                                .rating(4.5)
-                                .category("CAFE")
-                                .build(),
-                        PlaceSearchResponse.PlaceItem.builder()
-                                .placeId("mock-place-002")
-                                .name(query + " 식당")
-                                .address("서울특별시 강남구 테헤란로 456")
-                                .rating(4.2)
-                                .category("FOOD")
-                                .build()
-                ))
+        Map<String, Object> response = webClient.get()
+                .uri(uriBuilder -> uriBuilder
+                        .path(TEXT_SEARCH_PATH)
+                        .queryParam("query", query)
+                        .queryParam("location", lat + "," + lng)
+                        .queryParam("key", googleMapsConfig.getApiKey())
+                        .queryParam("language", "ko")
+                        .build())
+                .retrieve()
+                .onStatus(status -> status.is4xxClientError(), clientResponse -> {
+                    log.error("[Place] 장소 검색 클라이언트 오류 - HTTP {}", clientResponse.statusCode());
+                    return clientResponse.createException();
+                })
+                .onStatus(status -> status.is5xxServerError(), clientResponse -> {
+                    log.error("[Place] 장소 검색 구글 서버 오류 - HTTP {}", clientResponse.statusCode());
+                    return clientResponse.createException();
+                })
+                .bodyToMono(Map.class)
+                .block();
+
+        if (response == null) {
+            log.error("[Place] 장소 검색 응답이 null - query: {}", query);
+            throw new RuntimeException("구글 Places API 응답이 없습니다.");
+        }
+
+        String status = (String) response.get("status");
+        log.info("[Place] 장소 검색 응답 status: {}", status);
+
+        if ("ZERO_RESULTS".equals(status)) {
+            log.info("[Place] 검색 결과 없음 - query: {}", query);
+            return PlaceSearchResponse.builder().places(Collections.emptyList()).build();
+        }
+
+        if (!"OK".equals(status)) {
+            String errorMessage = (String) response.getOrDefault("error_message", "알 수 없는 오류");
+            log.error("[Place] 장소 검색 API 오류 - status: {}, message: {}", status, errorMessage);
+            throw new RuntimeException("장소 검색에 실패했습니다. (status: " + status + ")");
+        }
+
+        List<Map<String, Object>> results = (List<Map<String, Object>>) response.get("results");
+        if (results == null || results.isEmpty()) {
+            return PlaceSearchResponse.builder().places(Collections.emptyList()).build();
+        }
+
+        List<PlaceSearchResponse.PlaceItem> places = results.stream()
+                .map(this::toPlaceItem)
+                .collect(Collectors.toList());
+
+        return PlaceSearchResponse.builder().places(places).build();
+    }
+
+    /**
+     * 구글 API 응답의 단일 결과를 PlaceItem으로 변환
+     */
+    private PlaceSearchResponse.PlaceItem toPlaceItem(Map<String, Object> result) {
+        List<String> types = result.get("types") != null
+                ? (List<String>) result.get("types")
+                : Collections.emptyList();
+        // types 배열의 첫 번째 값을 카테고리로 사용 (예: restaurant → RESTAURANT)
+        String category = types.isEmpty() ? "UNKNOWN" : types.get(0).toUpperCase();
+
+        double rating = result.get("rating") != null
+                ? ((Number) result.get("rating")).doubleValue()
+                : 0.0;
+
+        return PlaceSearchResponse.PlaceItem.builder()
+                .placeId((String) result.get("place_id"))
+                .name((String) result.get("name"))
+                .address((String) result.get("formatted_address"))
+                .rating(rating)
+                .category(category)
                 .build();
     }
 
@@ -70,13 +126,17 @@ public class PlaceService {
      */
     public PlaceDetailResponse getPlaceDetail(String placeId) {
         log.info("[Place] 장소 상세 조회 - placeId: {}", placeId);
+        // API 키 로드 확인 (보안상 앞 5자리만 출력)
+        log.info("[Place] API 키 로드 확인 - 길이: {}, 앞자리: {}",
+                googleMapsConfig.getApiKey().length(),
+                googleMapsConfig.getApiKey().length() >= 5 ? googleMapsConfig.getApiKey().substring(0, 5) : "짧음(비정상)");
 
         Map<String, Object> response = webClient.get()
                 .uri(uriBuilder -> uriBuilder
                         .path(DETAILS_PATH)
                         .queryParam("place_id", placeId)
                         .queryParam("fields", "name,formatted_address,rating,reviews,opening_hours,geometry")
-                        .queryParam("key", googlePlacesApiKey)
+                        .queryParam("key", googleMapsConfig.getApiKey())
                         .queryParam("language", "ko")
                         .build())
                 .retrieve()
