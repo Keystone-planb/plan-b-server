@@ -63,6 +63,9 @@ public class SecurityConfig {
                 .requestMatchers("/login/oauth2/**").permitAll()
                 .requestMatchers("/actuator/health").permitAll()
                 .requestMatchers("/actuator/**").permitAll()
+                .requestMatchers("/swagger-ui/**").permitAll()
+                .requestMatchers("/swagger-ui.html").permitAll()
+                .requestMatchers("/v3/api-docs/**").permitAll()
                 .anyRequest().authenticated()
             )
 
@@ -87,10 +90,11 @@ public class SecurityConfig {
     public CorsConfigurationSource corsConfigurationSource() {
         CorsConfiguration config = new CorsConfiguration();
         config.setAllowedOrigins(List.of(
-                "http://localhost:3000",  // CRA
-                "http://localhost:5173",  // Vite
-                "http://localhost:8081",  // Expo Web
-                "http://localhost:8082"   // Expo Web (대체 포트)
+                "http://localhost:3000",                    // CRA
+                "http://localhost:5173",                    // Vite
+                "http://localhost:8081",                    // Expo Web
+                "http://localhost:8082",                    // Expo Web (대체 포트)
+                "https://api-dev.planb-travel.cloud"       // api-dev 통합 테스트 서버
         ));
         config.setAllowedMethods(List.of("GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"));
         config.setAllowedHeaders(List.of("*"));

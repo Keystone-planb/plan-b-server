@@ -32,6 +32,8 @@ out/
 /dist/
 /nbdist/
 /.nb-gradle/
+/plan-b-client/
+#프론트엔드 무시
 
 ### VS Code ###
 .vscode/
