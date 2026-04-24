@@ -102,26 +102,35 @@ jobs:
           cluster: planb-cluster
           wait-for-service-stability: true
 
-# ── 배포 결과 알림 (성공) ──
+# ── 11. 디스코드 알림 — 성공
       - name: Discord 알림 (성공)
         if: success()
+        env:
+          COMMIT_MSG: ${{ github.event.head_commit.message }}
         run: |
+          # 7자리 짧은 커밋 해시 생성
+          SHORT_SHA=$(echo "${{ github.sha }}" | cut -c1-7)
+          
+          # JSON 데이터 생성 (줄바꿈 및 특수문자 안전하게 처리)
           curl -H "Content-Type: application/json" \
-          -d '{
+          -d @- <<EOF
+          {
             "embeds": [{
               "title": "✅ 배포 성공",
               "color": 5763719,
               "fields": [
-                {"name": "브랜치", "value": "`${{ github.ref_name }}`", "inline": true},
-                {"name": "커밋 ID", "value": "`${{ github.sha }}`".substring(0,7), "inline": true},
-                {"name": "커밋 메시지", "value": "`${{ github.event.head_commit.message }}`", "inline": false},
-                {"name": "서버 주소", "value": "https://api.planb-travel.cloud", "inline": false}
+                {"name": "브랜치", "value": "${{ github.ref_name }}", "inline": true},
+                {"name": "커밋 ID", "value": "$SHORT_SHA", "inline": true},
+                {"name": "커밋 메시지", "value": "${COMMIT_MSG//\"/\\\"}", "inline": false},
+                {"name": "서버", "value": "api.planb-travel.cloud", "inline": false},
+                {"name": "로그 확인", "value": "[GitHub Actions](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})", "inline": false}
               ]
             }]
-          }' \
+          }
+          EOF
           ${{ secrets.DISCORD_WEBHOOK_URL }}
 
-      # ── 배포 결과 알림 (실패) ──
+      # ── 12. 디스코드 알림 — 실패
       - name: Discord 알림 (실패)
         if: failure()
         run: |
@@ -132,8 +141,8 @@ jobs:
               "color": 15548997,
               "description": "배포 중 오류가 발생했습니다. 로그를 확인해 주세요.",
               "fields": [
-                {"name": "브랜치", "value": "`${{ github.ref_name }}`", "inline": true},
-                {"name": "배포자", "value": "`${{ github.actor }}`", "inline": true},
+                {"name": "브랜치", "value": "${{ github.ref_name }}", "inline": true},
+                {"name": "배포자", "value": "${{ github.actor }}", "inline": true},
                 {"name": "로그 확인", "value": "[GitHub Actions 탭 바로가기](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})"}
               ]
             }]
