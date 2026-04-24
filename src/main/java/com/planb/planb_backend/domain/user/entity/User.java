@@ -54,6 +54,14 @@ public class User {
     @Builder.Default
     private String status = "ACTIVE";
 
+    // AI 추천용 취향: 여행 스타일 (예: HEALING, ACTIVE, TRENDY, CLASSIC, LOCAL)
+    @Column(name = "travel_style", length = 50)
+    private String travelStyle;
+
+    // AI 추천용 취향: 선호 장소 유형 목록 (JSON 배열 문자열로 저장, 예: ["FOOD","CAFE","PARK"])
+    @Column(name = "preferences", columnDefinition = "text")
+    private String preferences;
+
     @CreatedDate
     @Column(name = "created_at", updatable = false)
     private LocalDateTime createdAt;
@@ -64,5 +72,10 @@ public class User {
 
     public void withdraw() {
         this.status = "WITHDRAWN";
+    }
+
+    public void updatePreferences(String travelStyle, String preferences) {
+        this.travelStyle = travelStyle;
+        this.preferences = preferences;
     }
 }
