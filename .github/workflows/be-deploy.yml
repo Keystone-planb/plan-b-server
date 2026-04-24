@@ -108,11 +108,11 @@ jobs:
         env:
           COMMIT_MSG: ${{ github.event.head_commit.message }}
         run: |
-          # 7자리 짧은 커밋 해시 생성
           SHORT_SHA=$(echo "${{ github.sha }}" | cut -c1-7)
           
-          # JSON 데이터 생성 (줄바꿈 및 특수문자 안전하게 처리)
-          curl -H "Content-Type: application/json" \
+          # URL을 curl 명령어와 같은 라인에 명시했습니다.
+          curl -X POST -H "Content-Type: application/json" \
+          "${{ secrets.DISCORD_WEBHOOK_URL }}" \
           -d @- <<EOF
           {
             "embeds": [{
@@ -128,7 +128,6 @@ jobs:
             }]
           }
           EOF
-          ${{ secrets.DISCORD_WEBHOOK_URL }}
 
       # ── 12. 디스코드 알림 — 실패
       - name: Discord 알림 (실패)
