@@ -20,7 +20,7 @@ import java.io.IOException;
  */
 public class OAuth2RedirectUriFilter extends OncePerRequestFilter {
 
-    static final String COOKIE_NAME = "oauth2_redirect_uri";
+    public static final String COOKIE_NAME = "oauth2_redirect_uri";
     private static final int COOKIE_MAX_AGE = 300; // 5분 (OAuth 플로우 완료 충분)
 
     @Override
