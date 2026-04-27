@@ -77,6 +77,14 @@ oauth2:
   success-redirect-uri: ${OAUTH2_SUCCESS_REDIRECT_URI:http://localhost:8082/oauth/success}
   failure-redirect-uri: ${OAUTH2_FAILURE_REDIRECT_URI:http://localhost:8082/oauth/failure}
 
+naver:
+  client:
+    id: ${NAVER_CLIENT_ID}
+    secret: ${NAVER_CLIENT_SECRET}
+
+rapidapi:
+  key: ${RAPIDAPI_KEY}
+
 #외부 API 키
 openai:
   api-key: ${OPENAI_API_KEY}
