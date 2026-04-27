@@ -16,6 +16,7 @@ import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity;
 import org.springframework.security.config.annotation.web.configurers.AbstractHttpConfigurer;
 import org.springframework.security.config.http.SessionCreationPolicy;
+import org.springframework.security.oauth2.client.web.OAuth2AuthorizationRequestRedirectFilter;
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
 import org.springframework.web.cors.CorsConfiguration;
@@ -100,8 +101,9 @@ public class SecurityConfig {
                 })
             )
 
-            // OAuth2 시작 시 redirect_uri 쿠키 저장 필터 (JwtFilter보다 먼저)
-            .addFilterBefore(new OAuth2RedirectUriFilter(), UsernamePasswordAuthenticationFilter.class)
+            // OAuth2 시작 시 redirect_uri 쿠키 저장 필터
+            // Spring의 OAuth2AuthorizationRequestRedirectFilter보다 반드시 먼저 실행되어야 쿠키가 저장됨
+            .addFilterBefore(new OAuth2RedirectUriFilter(), OAuth2AuthorizationRequestRedirectFilter.class)
             .addFilterBefore(new JwtFilter(jwtProvider), UsernamePasswordAuthenticationFilter.class);
 
         return http.build();
