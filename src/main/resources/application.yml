@@ -73,6 +73,10 @@ jwt:
   access-token-expiration: 3600000      # 1시간 (ms)
   refresh-token-expiration: 1209600000  # 14일 (ms)
 
+oauth2:
+  success-redirect-uri: ${OAUTH2_SUCCESS_REDIRECT_URI:http://localhost:8082/oauth/success}
+  failure-redirect-uri: ${OAUTH2_FAILURE_REDIRECT_URI:http://localhost:8082/oauth/failure}
+
 #외부 API 키
 openai:
   api-key: ${OPENAI_API_KEY}

@@ -1,18 +1,21 @@
 package com.planb.planb_backend.auth;
 
-import tools.jackson.databind.ObjectMapper;
 import com.planb.planb_backend.domain.user.dto.AuthResponse;
 import com.planb.planb_backend.domain.user.entity.User;
 import com.planb.planb_backend.domain.user.repository.UserRepository;
+import jakarta.servlet.http.Cookie;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import lombok.RequiredArgsConstructor;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.oauth2.core.user.OAuth2User;
 import org.springframework.security.web.authentication.AuthenticationSuccessHandler;
 import org.springframework.stereotype.Component;
+import org.springframework.web.util.UriComponentsBuilder;
 
 import java.io.IOException;
+import java.util.Arrays;
 
 @Component
 @RequiredArgsConstructor
@@ -20,7 +23,9 @@ public class OAuth2SuccessHandler implements AuthenticationSuccessHandler {
 
     private final AuthService authService;
     private final UserRepository userRepository;
-    private final ObjectMapper objectMapper;
+
+    @Value("${oauth2.success-redirect-uri}")
+    private String defaultSuccessRedirectUri;
 
     @Override
     public void onAuthenticationSuccess(HttpServletRequest request,
@@ -34,8 +39,32 @@ public class OAuth2SuccessHandler implements AuthenticationSuccessHandler {
 
         AuthResponse authResponse = authService.issueTokens(user);
 
-        response.setContentType("application/json;charset=UTF-8");
-        response.setStatus(HttpServletResponse.SC_OK);
-        response.getWriter().write(objectMapper.writeValueAsString(authResponse));
+        // 프론트가 넘긴 redirect_uri 쿠키 → 없으면 기본값 사용
+        String targetUri = extractRedirectUriFromCookie(request).orElse(defaultSuccessRedirectUri);
+        clearRedirectUriCookie(response);
+
+        String redirectUrl = UriComponentsBuilder.fromUriString(targetUri)
+                .queryParam("access_token", authResponse.getAccessToken())
+                .queryParam("refresh_token", authResponse.getRefreshToken())
+                .queryParam("user_id", authResponse.getUserId())
+                .queryParam("nickname", authResponse.getNickname())
+                .build().toUriString();
+
+        response.sendRedirect(redirectUrl);
+    }
+
+    private java.util.Optional<String> extractRedirectUriFromCookie(HttpServletRequest request) {
+        if (request.getCookies() == null) return java.util.Optional.empty();
+        return Arrays.stream(request.getCookies())
+                .filter(c -> OAuth2RedirectUriFilter.COOKIE_NAME.equals(c.getName()))
+                .map(Cookie::getValue)
+                .findFirst();
+    }
+
+    private void clearRedirectUriCookie(HttpServletResponse response) {
+        Cookie cookie = new Cookie(OAuth2RedirectUriFilter.COOKIE_NAME, "");
+        cookie.setPath("/");
+        cookie.setMaxAge(0);
+        response.addCookie(cookie);
     }
 }
