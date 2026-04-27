@@ -15,6 +15,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDate;
 import java.time.temporal.ChronoUnit;
+import com.planb.planb_backend.domain.trip.dto.TripListResponse;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -59,13 +60,21 @@ public class TripService {
     }
 
     /**
-     * GET /api/trips — 내 여행 목록 조회
+     * GET /api/trips — 내 여행 목록 조회 (status 필터 지원)
+     * status: UPCOMING(예정) / PAST(지난) / ALL(전체)
      */
-    public List<TripSummaryResponse> getMyTrips(String email) {
+    public List<TripListResponse> getMyTrips(String email, String status) {
         User user = findUser(email);
+        LocalDate today = LocalDate.now();
+
         return tripRepository.findByUserOrderByCreatedAtDesc(user)
                 .stream()
-                .map(TripSummaryResponse::from)
+                .filter(trip -> switch (status.toUpperCase()) {
+                    case "UPCOMING" -> today.isBefore(trip.getStartDate());
+                    case "PAST"     -> today.isAfter(trip.getEndDate());
+                    default         -> true; // ALL
+                })
+                .map(TripListResponse::from)
                 .toList();
     }
 
