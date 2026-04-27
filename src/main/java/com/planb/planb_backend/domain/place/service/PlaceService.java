@@ -38,18 +38,13 @@ public class PlaceService {
      * GET /api/places/search?query=&lat=&lng=
      * 장소 검색 (Google Places Text Search API)
      */
-    public PlaceSearchResponse searchPlaces(String query, double lat, double lng) {
-        log.info("[Place] 장소 검색 요청 - query: {}, lat: {}, lng: {}", query, lat, lng);
-        // API 키 로드 확인 (보안상 앞 5자리만 출력)
-        log.info("[Place] API 키 로드 확인 - 길이: {}, 앞자리: {}",
-                googleMapsConfig.getApiKey().length(),
-                googleMapsConfig.getApiKey().length() >= 5 ? googleMapsConfig.getApiKey().substring(0, 5) : "짧음(비정상)");
+    public PlaceSearchResponse searchPlaces(String query) {
+        log.info("[Place] 장소 검색 요청 - query: {}", query);
 
         Map<String, Object> response = webClient.get()
                 .uri(uriBuilder -> uriBuilder
                         .path(TEXT_SEARCH_PATH)
                         .queryParam("query", query)
-                        .queryParam("location", lat + "," + lng)
                         .queryParam("key", googleMapsConfig.getApiKey())
                         .queryParam("language", "ko")
                         .build())

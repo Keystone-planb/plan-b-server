@@ -62,15 +62,12 @@ public class PlaceController {
     }
 
     /**
-     * GET /api/places/search?query=카페&lat=37.5&lng=127.0
-     * 장소 검색
+     * GET /api/places/search?query=광화문 스타벅스
+     * 장소명으로 검색
      */
     @GetMapping("/search")
-    public ResponseEntity<PlaceSearchResponse> searchPlaces(
-            @RequestParam String query,
-            @RequestParam(defaultValue = "37.5665") double lat,
-            @RequestParam(defaultValue = "126.9780") double lng) {
-        return ResponseEntity.ok(placeService.searchPlaces(query, lat, lng));
+    public ResponseEntity<PlaceSearchResponse> searchPlaces(@RequestParam String query) {
+        return ResponseEntity.ok(placeService.searchPlaces(query));
     }
 
     /**
