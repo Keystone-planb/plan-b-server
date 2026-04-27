@@ -13,7 +13,7 @@ import java.util.Map;
 @Service
 public class OpenAiAnalysisService {
 
-    @Value("${openai.api-key}")
+    @Value("${openai.api-key:}")
     private String apiKey;
 
     private final ObjectMapper objectMapper = new ObjectMapper();

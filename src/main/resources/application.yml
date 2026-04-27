@@ -79,15 +79,15 @@ oauth2:
 
 naver:
   client:
-    id: ${NAVER_CLIENT_ID}
-    secret: ${NAVER_CLIENT_SECRET}
+    id: ${NAVER_CLIENT_ID:}
+    secret: ${NAVER_CLIENT_SECRET:}
 
 rapidapi:
-  key: ${RAPIDAPI_KEY}
+  key: ${RAPIDAPI_KEY:}
 
 #외부 API 키
 openai:
-  api-key: ${OPENAI_API_KEY}
+  api-key: ${OPENAI_API_KEY:}
 
 google:
   maps:

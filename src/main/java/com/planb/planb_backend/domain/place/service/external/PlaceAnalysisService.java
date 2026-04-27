@@ -25,7 +25,8 @@ public class PlaceAnalysisService {
     private final GooglePlaceApiService googlePlaceApiService;
     private final InstaApiService instaApiService;
     private final NaverApiService naverApiService;
-    private final ObjectMapper objectMapper;
+
+    private final ObjectMapper objectMapper = new ObjectMapper();
 
     /**
      * 특정 장소에 대한 AI 리뷰 분석 실행 및 결과 객체 반환

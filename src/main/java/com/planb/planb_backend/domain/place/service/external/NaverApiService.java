@@ -13,10 +13,10 @@ import java.util.stream.Collectors;
 @Service
 public class NaverApiService {
 
-    @Value("${naver.client.id}")
+    @Value("${naver.client.id:}")
     private String clientId;
 
-    @Value("${naver.client.secret}")
+    @Value("${naver.client.secret:}")
     private String clientSecret;
 
     private final WebClient webClient = WebClient.builder()

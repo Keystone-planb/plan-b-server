@@ -11,7 +11,7 @@ import java.util.*;
 @Service
 public class InstaApiService {
 
-    @Value("${rapidapi.key}")
+    @Value("${rapidapi.key:}")
     private String rapidApiKey;
 
     private static final String RAPID_HOST = "instagram-scraper-20251.p.rapidapi.com";
