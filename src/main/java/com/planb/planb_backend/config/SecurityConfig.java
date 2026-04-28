@@ -7,6 +7,7 @@ import com.planb.planb_backend.jwt.JwtFilter;
 import com.planb.planb_backend.jwt.JwtProvider;
 import jakarta.servlet.DispatcherType;
 import jakarta.servlet.http.Cookie;
+import jakarta.servlet.http.HttpServletResponse;
 import lombok.RequiredArgsConstructor;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
@@ -97,7 +98,9 @@ public class SecurityConfig {
                     String redirectUrl = UriComponentsBuilder.fromUriString(targetUri)
                             .queryParam("error", "소셜 로그인에 실패했습니다.")
                             .build().toUriString();
-                    response.sendRedirect(redirectUrl);
+                    response.setStatus(HttpServletResponse.SC_FOUND);
+                    response.setHeader("Location", redirectUrl);
+                    response.flushBuffer();
                 })
             )
 

@@ -35,6 +35,8 @@ public class OAuth2RedirectUriFilter extends OncePerRequestFilter {
                 cookie.setPath("/");
                 cookie.setHttpOnly(true);
                 cookie.setMaxAge(COOKIE_MAX_AGE);
+                // HTTPS 운영 환경에서 카카오 콜백 시 쿠키가 유실되지 않도록 Secure 설정
+                cookie.setSecure(true);
                 response.addCookie(cookie);
             }
         }

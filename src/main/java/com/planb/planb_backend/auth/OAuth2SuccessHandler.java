@@ -50,7 +50,10 @@ public class OAuth2SuccessHandler implements AuthenticationSuccessHandler {
                 .queryParam("nickname", authResponse.getNickname())
                 .build().toUriString();
 
-        response.sendRedirect(redirectUrl);
+        // sendRedirect() 대신 직접 302 응답 — planb:// 같은 커스텀 스킴도 안전하게 처리
+        response.setStatus(HttpServletResponse.SC_FOUND);
+        response.setHeader("Location", redirectUrl);
+        response.flushBuffer();
     }
 
     private java.util.Optional<String> extractRedirectUriFromCookie(HttpServletRequest request) {
