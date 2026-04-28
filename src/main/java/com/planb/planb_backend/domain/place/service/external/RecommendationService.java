@@ -161,11 +161,16 @@ public class RecommendationService {
     }
 
     /**
-     * 구글 검색 결과로부터 Place 엔티티의 기본 정보를 업데이트하는 공통 메서드
+     * 구글 Nearby Search 결과로부터 Place 엔티티 정보를 업데이트
+     * - Nearby Search가 포함하는 필드: name, geometry, rating, user_ratings_total,
+     *   business_status, opening_hours(open_now만), price_level, photos
+     * - phone, website, full opening_hours 등은 Place Details API 전용 (analyze 시 저장)
      */
     private void updatePlaceInfo(Place place, Map<String, Object> result) {
+        // 이름
         place.setName((String) result.get("name"));
 
+        // 좌표
         try {
             Map<String, Object> geometry = (Map<String, Object>) result.get("geometry");
             Map<String, Object> location = (Map<String, Object>) geometry.get("location");
@@ -175,11 +180,49 @@ public class RecommendationService {
             log.warn("위경도 정보 추출 실패: {}", place.getGooglePlaceId());
         }
 
+        // 평점 / 리뷰 수
         if (result.containsKey("rating")) {
             place.setRating(((Number) result.get("rating")).doubleValue());
         }
         if (result.containsKey("user_ratings_total")) {
             place.setUserRatingsTotal(((Number) result.get("user_ratings_total")).intValue());
+        }
+
+        // 영업 상태
+        if (result.containsKey("business_status")) {
+            place.setBusinessStatus((String) result.get("business_status"));
+        }
+
+        // 가격대 (0=무료 ~ 4=매우 비쌈)
+        if (result.containsKey("price_level")) {
+            place.setPriceLevel(((Number) result.get("price_level")).intValue());
+        }
+
+        // 영업시간 — Nearby Search는 open_now(현재 영업 여부)만 포함
+        // 전체 요일별 시간은 Place Details API(analyze)에서 저장됨
+        if (result.containsKey("opening_hours")) {
+            try {
+                Object openingHours = result.get("opening_hours");
+                com.fasterxml.jackson.databind.ObjectMapper mapper = new com.fasterxml.jackson.databind.ObjectMapper();
+                place.setOpeningHours(mapper.writeValueAsString(openingHours));
+            } catch (Exception e) {
+                log.warn("opening_hours 직렬화 실패: {}", place.getGooglePlaceId());
+            }
+        }
+
+        // 대표 사진 URL
+        if (result.containsKey("photos")) {
+            try {
+                List<Map<String, Object>> photos = (List<Map<String, Object>>) result.get("photos");
+                if (photos != null && !photos.isEmpty()) {
+                    String photoRef = (String) photos.get(0).get("photo_reference");
+                    if (photoRef != null) {
+                        place.setPhotoUrl("https://maps.googleapis.com/maps/api/place/photo?maxwidth=400&photoreference=" + photoRef);
+                    }
+                }
+            } catch (Exception e) {
+                log.warn("photo_url 추출 실패: {}", place.getGooglePlaceId());
+            }
         }
     }
 }
