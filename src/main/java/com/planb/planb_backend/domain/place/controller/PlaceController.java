@@ -27,16 +27,17 @@ public class PlaceController {
      */
     @PostMapping("/test/analyze")
     public ResponseEntity<Map<String, Object>> testAnalyze(@RequestParam String googlePlaceId) {
-        // 1. DB에 장소가 있으면 재사용, 없으면 새로 생성
-        Place place = placeRepository.findByGooglePlaceId(googlePlaceId)
-                .orElseGet(() -> {
-                    Place newPlace = new Place();
-                    newPlace.setGooglePlaceId(googlePlaceId);
-                    newPlace.setName("분석 중...");
-                    return placeRepository.saveAndFlush(newPlace);
-                });
+        // 1. 이미 분석된 장소면 DB 캐시 반환 (재분석 스킵)
+        Place existing = placeRepository.findByGooglePlaceId(googlePlaceId).orElse(null);
+        if (existing != null && existing.getReviewData() != null && !existing.getReviewData().isBlank()) {
+            return ResponseEntity.ok(toResponseBody(existing));
+        }
 
-        // 2. 리뷰 수집 + AI 분석 실행
+        // 2. 신규 장소면 DB에 저장 후 분석 실행
+        Place place = (existing != null) ? existing : placeRepository.saveAndFlush(
+                new Place() {{ setGooglePlaceId(googlePlaceId); setName("분석 중..."); }}
+        );
+
         Place result;
         try {
             result = placeAnalysisService.processPlaceAnalysis(place.getId());
@@ -47,18 +48,22 @@ public class PlaceController {
         }
 
         // 3. 결과 반환
+        return ResponseEntity.ok(toResponseBody(result));
+    }
+
+    private Map<String, Object> toResponseBody(Place p) {
         Map<String, Object> body = new LinkedHashMap<>();
-        body.put("placeId", result.getId());
-        body.put("googlePlaceId", result.getGooglePlaceId());
-        body.put("name", result.getName() != null ? result.getName() : "");
-        body.put("category", result.getCategory() != null ? result.getCategory() : "");
-        body.put("space", result.getSpace() != null ? result.getSpace().name() : "");
-        body.put("type", result.getType() != null ? result.getType().name() : "");
-        body.put("mood", result.getMood() != null ? result.getMood().name() : "");
-        body.put("rating", result.getRating() != null ? result.getRating() : 0.0);
-        body.put("reviewData", result.getReviewData() != null ? result.getReviewData() : "");
-        body.put("lastSyncedAt", result.getLastSyncedAt() != null ? result.getLastSyncedAt().toString() : "");
-        return ResponseEntity.ok(body);
+        body.put("placeId", p.getId());
+        body.put("googlePlaceId", p.getGooglePlaceId());
+        body.put("name", p.getName() != null ? p.getName() : "");
+        body.put("category", p.getCategory() != null ? p.getCategory() : "");
+        body.put("space", p.getSpace() != null ? p.getSpace().name() : "");
+        body.put("type", p.getType() != null ? p.getType().name() : "");
+        body.put("mood", p.getMood() != null ? p.getMood().name() : "");
+        body.put("rating", p.getRating() != null ? p.getRating() : 0.0);
+        body.put("reviewData", p.getReviewData() != null ? p.getReviewData() : "");
+        body.put("lastSyncedAt", p.getLastSyncedAt() != null ? p.getLastSyncedAt().toString() : "");
+        return body;
     }
 
     /**
