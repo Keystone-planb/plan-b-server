@@ -34,9 +34,15 @@ public class PlaceController {
         }
 
         // 2. 신규 장소면 DB에 저장 후 분석 실행
-        Place place = (existing != null) ? existing : placeRepository.saveAndFlush(
-                new Place() {{ setGooglePlaceId(googlePlaceId); setName("분석 중..."); }}
-        );
+        Place place;
+        if (existing != null) {
+            place = existing;
+        } else {
+            Place newPlace = new Place();
+            newPlace.setGooglePlaceId(googlePlaceId);
+            newPlace.setName("분석 중...");
+            place = placeRepository.saveAndFlush(newPlace);
+        }
 
         Place result;
         try {
