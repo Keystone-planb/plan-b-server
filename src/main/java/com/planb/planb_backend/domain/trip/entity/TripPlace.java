@@ -34,4 +34,10 @@ public class TripPlace {
 
     @Column(length = 500)
     private String memo;        // 사용자 메모
+
+    /** PLAN B 대체 적용: 장소 ID와 이름을 새 값으로 교체 */
+    public void replace(String newPlaceId, String newPlaceName) {
+        this.placeId = newPlaceId;
+        this.name = "[" + newPlaceName + "] (PLAN B)";
+    }
 }

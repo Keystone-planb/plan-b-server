@@ -133,6 +133,17 @@ public class TripService {
         return AddLocationResponse.from(tripPlaceRepository.save(tripPlace));
     }
 
+    /**
+     * POST /api/plans/{planId}/replace — 일정 장소 대체
+     * TripPlace의 placeId와 name을 새 장소로 교체하고 "(PLAN B)" 표시
+     */
+    @Transactional
+    public void replaceTripPlace(String email, Long tripPlaceId, String newGooglePlaceId, String newPlaceName) {
+        TripPlace tripPlace = tripPlaceRepository.findByIdAndUserEmail(tripPlaceId, email)
+                .orElseThrow(() -> new IllegalArgumentException("일정을 찾을 수 없거나 접근 권한이 없습니다."));
+        tripPlace.replace(newGooglePlaceId, newPlaceName);
+    }
+
     // ── private 헬퍼 ────────────────────────────────────────────────
 
     private User findUser(String email) {
