@@ -45,7 +45,8 @@ public class CustomOAuth2UserService extends DefaultOAuth2UserService {
             providerId = String.valueOf(attributes.get("id"));
             Map<String, Object> kakaoAccount = (Map<String, Object>) attributes.get("kakao_account");
             Map<String, Object> properties = (Map<String, Object>) attributes.get("properties");
-            email = kakaoAccount != null ? (String) kakaoAccount.get("email") : providerId + "@kakao.local";
+            String rawEmail = kakaoAccount != null ? (String) kakaoAccount.get("email") : null;
+            email = (rawEmail != null && !rawEmail.isBlank()) ? rawEmail : providerId + "@kakao.com";
             nickname = properties != null ? (String) properties.get("nickname") : "카카오유저";
         } else {
             throw new OAuth2AuthenticationException("지원하지 않는 소셜 로그인입니다: " + registrationId);
