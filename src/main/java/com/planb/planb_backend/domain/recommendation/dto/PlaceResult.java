@@ -5,6 +5,7 @@ import com.planb.planb_backend.domain.place.entity.Place;
 import lombok.Builder;
 import lombok.Getter;
 
+import java.time.LocalDateTime;
 import java.util.Map;
 
 @Getter
@@ -22,7 +23,17 @@ public class PlaceResult {
     private Integer reviewCount;
     private Double latitude;
     private Double longitude;
-    private String reviewSummary;   // AI 종합 한줄 요약
+    private String reviewSummary;       // AI 종합 한줄 요약
+
+    // 영업 정보
+    private String businessStatus;      // OPERATIONAL / CLOSED_TEMPORARILY / CLOSED_PERMANENTLY
+    private String openingHours;        // JSON 문자열
+    private String phoneNumber;
+    private String website;
+    private Integer priceLevel;         // 0~4
+
+    private String photoUrl;
+    private LocalDateTime lastSyncedAt;
 
     private static final ObjectMapper mapper = new ObjectMapper();
 
@@ -40,6 +51,13 @@ public class PlaceResult {
                 .latitude(place.getLatitude())
                 .longitude(place.getLongitude())
                 .reviewSummary(extractTotalSummary(place.getReviewData()))
+                .businessStatus(place.getBusinessStatus())
+                .openingHours(place.getOpeningHours())
+                .phoneNumber(place.getPhoneNumber())
+                .website(place.getWebsite())
+                .priceLevel(place.getPriceLevel())
+                .photoUrl(place.getPhotoUrl())
+                .lastSyncedAt(place.getLastSyncedAt())
                 .build();
     }
 

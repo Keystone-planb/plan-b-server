@@ -26,11 +26,8 @@ public class ScoringStrategy {
         }
 
         // (2) Type 필터
-        String targetType = context.getSelectedType();
-
-        if (context.isKeepOriginalType()) {
-            // TODO: 기존 일정의 장소 타입을 가져오는 로직 추가 가능
-        }
+        // keepOriginalCategory=true 이면 selectedType이 무의미하므로 가중치 적용 스킵
+        String targetType = context.isKeepOriginalCategory() ? null : context.getSelectedType();
 
         if (targetType != null && !targetType.isEmpty() && candidate.getType() != null) {
             if (targetType.equalsIgnoreCase(candidate.getType().name())) {

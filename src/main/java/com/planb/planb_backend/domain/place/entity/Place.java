@@ -59,6 +59,23 @@ public class Place {
     private Double latitude;
     private Double longitude;
 
+    // --- [영업 정보] ---
+    @Column(name = "business_status", length = 30)
+    private String businessStatus;   // OPERATIONAL / CLOSED_TEMPORARILY / CLOSED_PERMANENTLY
+
+    @Column(name = "opening_hours", columnDefinition = "jsonb")
+    @JdbcTypeCode(SqlTypes.JSON)
+    private String openingHours;     // {"weekday_text": [...], "periods": [...]}
+
+    @Column(name = "phone_number", length = 30)
+    private String phoneNumber;
+
+    @Column(length = 255)
+    private String website;
+
+    @Column(name = "price_level")
+    private Integer priceLevel;      // 0(무료) ~ 4(매우 비쌈)
+
     @Column(name = "last_synced_at")
     private LocalDateTime lastSyncedAt;
 }

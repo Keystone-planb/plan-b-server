@@ -9,8 +9,6 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
-import java.util.LinkedHashMap;
-import java.util.Map;
 
 @RestController
 @RequestMapping("/api/places")
@@ -26,50 +24,21 @@ public class PlaceController {
      * [테스트용] Google Place ID로 리뷰 수집 + AI 분석 실행
      */
     @PostMapping("/test/analyze")
-    public ResponseEntity<Map<String, Object>> testAnalyze(@RequestParam String googlePlaceId) {
-        // 1. 이미 분석된 장소면 DB 캐시 반환 (재분석 스킵)
-        Place existing = placeRepository.findByGooglePlaceId(googlePlaceId).orElse(null);
-        if (existing != null && existing.getReviewData() != null && !existing.getReviewData().isBlank()) {
-            return ResponseEntity.ok(toResponseBody(existing));
-        }
-
-        // 2. 신규 장소면 DB에 저장 후 분석 실행
-        Place place;
-        if (existing != null) {
-            place = existing;
-        } else {
+    public ResponseEntity<String> testAnalyze(@RequestParam String googlePlaceId) {
+        // DB에 없으면 신규 저장, 있으면 기존 레코드 사용 — 항상 재분석 실행
+        Place place = placeRepository.findByGooglePlaceId(googlePlaceId).orElseGet(() -> {
             Place newPlace = new Place();
             newPlace.setGooglePlaceId(googlePlaceId);
             newPlace.setName("분석 중...");
-            place = placeRepository.saveAndFlush(newPlace);
-        }
+            return placeRepository.saveAndFlush(newPlace);
+        });
 
-        Place result;
         try {
-            result = placeAnalysisService.processPlaceAnalysis(place.getId());
+            placeAnalysisService.processPlaceAnalysis(place.getId());
+            return ResponseEntity.ok("성공적으로 분석하여 DB에 반영했습니다! (ID: " + place.getId() + ")");
         } catch (Exception e) {
-            Map<String, Object> errorBody = new LinkedHashMap<>();
-            errorBody.put("error", e.getMessage());
-            return ResponseEntity.internalServerError().body(errorBody);
+            return ResponseEntity.internalServerError().body("분석 중 에러 발생: " + e.getMessage());
         }
-
-        // 3. 결과 반환
-        return ResponseEntity.ok(toResponseBody(result));
-    }
-
-    private Map<String, Object> toResponseBody(Place p) {
-        Map<String, Object> body = new LinkedHashMap<>();
-        body.put("placeId", p.getId());
-        body.put("googlePlaceId", p.getGooglePlaceId());
-        body.put("name", p.getName() != null ? p.getName() : "");
-        body.put("category", p.getCategory() != null ? p.getCategory() : "");
-        body.put("space", p.getSpace() != null ? p.getSpace().name() : "");
-        body.put("type", p.getType() != null ? p.getType().name() : "");
-        body.put("mood", p.getMood() != null ? p.getMood().name() : "");
-        body.put("rating", p.getRating() != null ? p.getRating() : 0.0);
-        body.put("reviewData", p.getReviewData() != null ? p.getReviewData() : "");
-        body.put("lastSyncedAt", p.getLastSyncedAt() != null ? p.getLastSyncedAt().toString() : "");
-        return body;
     }
 
     /**

@@ -3,33 +3,38 @@ package com.planb.planb_backend.domain.recommendation.dto;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 
+import java.time.LocalDateTime;
+
 @Getter
 @NoArgsConstructor
 public class RecommendRequest {
+
+    /** 사용자 / 여행 식별 */
+    private Long userId;
+    private Long tripId;                       // 중복 제외 및 다음 일정 추적에 사용
+    private Long currentPlanId;                // keepOriginalCategory=true 일 때 원본 카테고리 조회용
+    private LocalDateTime currentPlanStartTime;
 
     /** 현재 위치 */
     private Double currentLat;
     private Double currentLng;
 
-    /** 이동 시간 반경 (분 단위) */
+    /** 이동 조건 */
     private int radiusMinute;
+    private boolean walk;                      // true=도보(80m/분), false=차량(400m/분)
 
-    /** 도보 여부 (true=도보, false=차량) */
-    private boolean walk;
+    /** 장소 필터 */
+    private String selectedSpace;             // INDOOR / OUTDOOR / MIX
+    private String selectedType;              // FOOD / CAFE / SIGHTS / SHOP / MARKET / THEME / CULTURE / PARK
 
-    /** 원하는 공간 타입 (INDOOR / OUTDOOR / MIX) */
-    private String selectedSpace;
+    /**
+     * true: 현재 일정 원본 구글 카테고리 유지 → AI 2차 검열 스킵
+     * false: selectedType 기준 검색 + AI 2차 검열 적용 (기본값)
+     */
+    private boolean keepOriginalCategory;
 
-    /** 원하는 장소 타입 (FOOD / CAFE / SIGHTS / ...) */
-    private String selectedType;
-
-    /** 기존 일정 타입 유지 여부 */
-    private boolean keepOriginalType;
-
-    /** 다음 목적지 고려 여부 (타원형 동선 보너스) */
-    private boolean considerNextPlan;
-
-    /** 다음 목적지 좌표 (considerNextPlan=true일 때) */
-    private Double nextLat;
-    private Double nextLng;
+    /** 동선 최적화 */
+    private boolean considerNextPlan;         // true 시 타원형 보너스 활성화
+    private Double nextLat;                   // 다음 목적지 위도 (null 이면 DB에서 자동 조회)
+    private Double nextLng;                   // 다음 목적지 경도
 }

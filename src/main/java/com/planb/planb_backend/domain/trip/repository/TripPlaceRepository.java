@@ -5,10 +5,28 @@ import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
+import java.time.LocalDate;
+import java.util.List;
 import java.util.Optional;
 
 public interface TripPlaceRepository extends JpaRepository<TripPlace, Long> {
 
     @Query("SELECT tp FROM TripPlace tp WHERE tp.tripPlaceId = :id AND tp.itinerary.trip.user.email = :email")
     Optional<TripPlace> findByIdAndUserEmail(@Param("id") Long id, @Param("email") String email);
+
+    /**
+     * 특정 여행(tripId)에 등록된 모든 TripPlace 조회 (중복 제외용)
+     */
+    @Query("SELECT tp FROM TripPlace tp WHERE tp.itinerary.trip.tripId = :tripId")
+    List<TripPlace> findByTripId(@Param("tripId") Long tripId);
+
+    /**
+     * 특정 유저의 오늘 이후 일정을 날짜/방문 시간 오름차순으로 조회
+     * (다음 목적지 자동 추적용)
+     */
+    @Query("SELECT tp FROM TripPlace tp " +
+           "WHERE tp.itinerary.trip.user.id = :userId " +
+           "AND tp.itinerary.date >= :today " +
+           "ORDER BY tp.itinerary.date ASC, tp.visitTime ASC")
+    List<TripPlace> findUpcomingByUserId(@Param("userId") Long userId, @Param("today") LocalDate today);
 }

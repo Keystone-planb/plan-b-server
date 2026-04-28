@@ -4,11 +4,16 @@ import com.planb.planb_backend.domain.place.dto.UserContext;
 import com.planb.planb_backend.domain.place.entity.Place;
 import com.planb.planb_backend.domain.place.repository.PlaceRepository;
 import com.planb.planb_backend.domain.trip.entity.PlaceType;
+import com.planb.planb_backend.domain.trip.entity.TripPlace;
+import com.planb.planb_backend.domain.trip.repository.TripPlaceRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.LocalDate;
+import java.time.LocalTime;
+import java.time.format.DateTimeFormatter;
 import java.util.*;
 import java.util.stream.Collectors;
 
@@ -19,28 +24,33 @@ public class RecommendationService {
 
     private final GooglePlaceApiService googlePlaceApiService;
     private final PlaceRepository placeRepository;
+    private final TripPlaceRepository tripPlaceRepository;
     private final ScoringStrategy scoringStrategy;
 
     @Transactional
     public List<Place> getRecommendations(UserContext context) {
 
         // [STEP 1] 다음 일정 자동 추적 (동선 가중치용)
-        // NOTE: PlanRepository가 현재 구현되지 않아 주석 처리.
-        //       다음 일정 좌표는 프론트엔드에서 UserContext.nextLat/nextLng로 직접 전달받아 사용.
-        /*
-        if (context.isConsiderNextPlan() && context.getNextLat() == null) {
-            planRepository.findNextPlan(context.getUserId(), context.getCurrentPlanStartTime())
-                    .ifPresent(nextPlan -> {
-                        context.setNextLat(nextPlan.getPlace().getLatitude());
-                        context.setNextLng(nextPlan.getPlace().getLongitude());
-                        log.info("다음 목적지 자동 탐색 완료: {}", nextPlan.getTitle());
-                    });
+        // considerNextPlan=true인데 프론트에서 좌표를 안 넘긴 경우, DB에서 자동 조회
+        if (context.isConsiderNextPlan() && context.getNextLat() == null && context.getUserId() != null) {
+            resolveNextDestination(context);
         }
-        */
 
-        // [STEP 2] 검색 반경 계산 (isWalk 반영)
+        // [STEP 2] 검색 반경 계산
         int radiusMeters = context.isWalk() ? (context.getRadiusMinute() * 80) : (context.getRadiusMinute() * 400);
         log.info("검색 반경 설정: {}m (도보여부: {})", radiusMeters, context.isWalk());
+
+        // [STEP 2.5] 이번 여행에 이미 등록된 장소 목록 수집 (중복 제외용)
+        Set<String> excludedGooglePlaceIds = new HashSet<>();
+        if (context.getTripId() != null) {
+            tripPlaceRepository.findByTripId(context.getTripId())
+                    .forEach(tp -> {
+                        if (tp.getPlaceId() != null) {
+                            excludedGooglePlaceIds.add(tp.getPlaceId());
+                        }
+                    });
+            log.info("[중복 제외] 같은 여행 등록 장소 {}개 제외 처리", excludedGooglePlaceIds.size());
+        }
 
         // [STEP 3] 구글 Nearby Search로 데이터 수집
         List<Map<String, Object>> googleResults = googlePlaceApiService.searchNearbyPlaces(
@@ -56,20 +66,28 @@ public class RecommendationService {
         for (Map<String, Object> result : googleResults) {
             String gId = (String) result.get("place_id");
 
-            // 1. DB에서 기존 장소 조회
-            Optional<Place> existingPlaceOpt = placeRepository.findByGooglePlaceId(gId);
+            // ① 영업 상태 필터 — OPERATIONAL인 것만 통과
+            String businessStatus = (String) result.get("business_status");
+            if (businessStatus != null && !"OPERATIONAL".equalsIgnoreCase(businessStatus)) {
+                log.info(">>>> [영업 상태 탈락] gId={}, status={}", gId, businessStatus);
+                continue;
+            }
 
+            // ② 이번 여행 중복 제외
+            if (excludedGooglePlaceIds.contains(gId)) {
+                log.info(">>>> [중복 일정 탈락] 이미 여행에 등록된 장소: {}", gId);
+                continue;
+            }
+
+            // DB Upsert
             Place place;
+            Optional<Place> existingPlaceOpt = placeRepository.findByGooglePlaceId(gId);
             if (existingPlaceOpt.isPresent()) {
-                // 2. 이미 있다면 정보 업데이트 (중복 저장 방지)
                 place = existingPlaceOpt.get();
-                log.info(">>>> [중복 방지] 기존 장소 사용: {}", place.getName());
+                log.info(">>>> [기존 장소 사용] {}", place.getName());
                 updatePlaceInfo(place, result);
                 placeRepository.saveAndFlush(place);
             } else {
-                // 3. 없다면 기본 정보만 저장 — AI 분석은 하지 않음
-                // (AI 분석은 /api/places/{placeId}/analyze 로 별도 요청하거나
-                //  추후 백그라운드 배치로 처리. 추천 응답 속도 우선)
                 Place newPlace = new Place();
                 newPlace.setGooglePlaceId(gId);
                 updatePlaceInfo(newPlace, result);
@@ -77,15 +95,16 @@ public class RecommendationService {
                 log.info(">>>> [신규 장소 등록] AI 분석 보류: {}", place.getName());
             }
 
-            // [2차 검열 로직] 유저가 요청한 카테고리와 AI 분석 타입 비교
-            String requestedCategory = context.getRequestedCategory();
-            PlaceType aiDetectedType = place.getType();
-
-            if (requestedCategory != null && aiDetectedType != null) {
-                if (!aiDetectedType.name().equalsIgnoreCase(requestedCategory)) {
-                    log.info(">>>> [2차 검열 탈락] 장소: {}, 요청타입: {}, AI분석타입: {} -> 추천 제외",
-                            place.getName(), requestedCategory, aiDetectedType);
-                    continue;
+            // ③ AI 2차 검열 — keepOriginalCategory=true 이면 스킵
+            if (!context.isKeepOriginalCategory()) {
+                String requestedCategory = context.getRequestedCategory();
+                PlaceType aiDetectedType = place.getType();
+                if (requestedCategory != null && aiDetectedType != null) {
+                    if (!aiDetectedType.name().equalsIgnoreCase(requestedCategory)) {
+                        log.info(">>>> [2차 검열 탈락] 장소: {}, 요청: {}, AI분석: {} → 제외",
+                                place.getName(), requestedCategory, aiDetectedType);
+                        continue;
+                    }
                 }
             }
 
@@ -108,6 +127,37 @@ public class RecommendationService {
                 ))
                 .limit(5)
                 .collect(Collectors.toList());
+    }
+
+    /**
+     * 다음 목적지 자동 추적
+     * - 오늘 이후 TripPlace 중 현재 시각 이후 첫 번째 일정을 찾아 UserContext에 주입
+     * - Place 좌표가 DB에 없으면 건너뜀
+     */
+    private void resolveNextDestination(UserContext context) {
+        LocalDate today = LocalDate.now();
+        String nowTime = LocalTime.now().format(DateTimeFormatter.ofPattern("HH:mm"));
+
+        List<TripPlace> upcoming = tripPlaceRepository.findUpcomingByUserId(context.getUserId(), today);
+
+        for (TripPlace tp : upcoming) {
+            // 오늘 일정이면 현재 시각 이후인 것만 허용
+            if (tp.getItinerary().getDate().isEqual(today)) {
+                String visitTime = tp.getVisitTime();
+                if (visitTime == null || visitTime.compareTo(nowTime) <= 0) continue;
+            }
+
+            // Google Place ID로 DB에서 좌표 조회
+            Place nextPlace = placeRepository.findByGooglePlaceId(tp.getPlaceId()).orElse(null);
+            if (nextPlace != null && nextPlace.getLatitude() != null && nextPlace.getLongitude() != null) {
+                context.setNextLat(nextPlace.getLatitude());
+                context.setNextLng(nextPlace.getLongitude());
+                log.info("[다음 목적지 자동 탐색] 장소: {}, 날짜: {}, 시간: {}",
+                        tp.getName(), tp.getItinerary().getDate(), tp.getVisitTime());
+                return;
+            }
+        }
+        log.info("[다음 목적지 탐색] 조건에 맞는 다음 일정 없음 — 동선 보너스 비활성화");
     }
 
     /**

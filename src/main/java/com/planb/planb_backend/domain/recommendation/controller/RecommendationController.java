@@ -32,7 +32,7 @@ public class RecommendationController {
 
     /**
      * POST /api/recommendations
-     * 현재 위치 기반 대안 장소 추천 (상위 5개 반환)
+     * 현재 위치와 이동 조건을 기반으로 대안 장소 최대 5개 추천
      */
     @Operation(
         summary = "대안 장소 추천",
@@ -47,13 +47,16 @@ public class RecommendationController {
 
         UserContext context = UserContext.builder()
                 .userId(user.getId())
+                .tripId(request.getTripId())
+                .currentPlanId(request.getCurrentPlanId())
+                .currentPlanStartTime(request.getCurrentPlanStartTime())
                 .currentLat(request.getCurrentLat())
                 .currentLng(request.getCurrentLng())
                 .radiusMinute(request.getRadiusMinute())
                 .walk(request.isWalk())
                 .selectedSpace(request.getSelectedSpace())
                 .selectedType(request.getSelectedType())
-                .keepOriginalType(request.isKeepOriginalType())
+                .keepOriginalCategory(request.isKeepOriginalCategory())
                 .considerNextPlan(request.isConsiderNextPlan())
                 .nextLat(request.getNextLat())
                 .nextLng(request.getNextLng())
@@ -73,23 +76,26 @@ public class RecommendationController {
 
     /**
      * POST /api/places/{placeId}/analyze
-     * 특정 장소 AI 심층 분석 수동 트리거 (DB place_id 기준)
+     * 특정 장소 AI 심층 분석 (DB place_id 기준)
      */
     @Operation(
         summary = "장소 심층 분석 트리거",
         description = "DB에 저장된 장소(placeId)에 대해 구글/네이버/인스타 리뷰를 수집하고 AI 분석을 실행합니다."
     )
     @PostMapping("/places/{placeId}/analyze")
-    public ResponseEntity<PlaceResult> analyze(@PathVariable Long placeId) {
+    public ResponseEntity<String> analyze(@PathVariable Long placeId) {
         try {
-            Place result = placeAnalysisService.processPlaceAnalysis(placeId);
-            return ResponseEntity.ok(PlaceResult.from(result));
+            placeAnalysisService.processPlaceAnalysis(placeId);
+            return ResponseEntity.ok("성공적으로 분석하여 DB에 반영했습니다! (ID: " + placeId + ")");
         } catch (IllegalArgumentException e) {
             log.warn("[Analyze] 장소 없음: placeId={}", placeId);
             return ResponseEntity.notFound().build();
+        } catch (IllegalStateException e) {
+            log.warn("[Analyze] 분석 전제 조건 실패: {}", e.getMessage());
+            return ResponseEntity.internalServerError().body("분석 중 에러 발생: " + e.getMessage());
         } catch (Exception e) {
             log.error("[Analyze] 분석 실패: placeId={}, error={}", placeId, e.getMessage());
-            return ResponseEntity.internalServerError().build();
+            return ResponseEntity.internalServerError().body("분석 중 에러 발생: " + e.getMessage());
         }
     }
 

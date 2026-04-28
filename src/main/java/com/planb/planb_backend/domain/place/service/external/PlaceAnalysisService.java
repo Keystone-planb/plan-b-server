@@ -38,12 +38,26 @@ public class PlaceAnalysisService {
 
         log.info("======= [START ANALYSIS] Place ID: {} =======", placeId);
 
+        // [사전 검증] google_place_id 없으면 즉시 중단
+        if (place.getGooglePlaceId() == null || place.getGooglePlaceId().isBlank()) {
+            throw new IllegalStateException(
+                "Place(id=" + placeId + ")에 google_place_id가 없습니다. 분석 전에 google_place_id를 먼저 채워야 합니다.");
+        }
+
         // [STEP 1] 구글 상세 정보 가져오기
         Map<String, Object> googleDetails = googlePlaceApiService.getGooglePlaceDetails(place.getGooglePlaceId());
 
         if (googleDetails == null || googleDetails.isEmpty()) {
-            log.warn(">>>> [WARN] 구글 상세 정보를 가져오지 못함. 기존 DB 정보로 수집 시도.");
-            googleDetails = new HashMap<>();
+            throw new IllegalStateException(
+                "구글 Place Details 조회 실패. (place_id=" + place.getGooglePlaceId() + ") " +
+                "Naver/Insta/AI 호출은 모두 건너뜁니다.");
+        }
+
+        // [STEP 1.5] 이름 검증
+        String googleName = (String) googleDetails.get("name");
+        if (googleName == null || googleName.isBlank()) {
+            throw new IllegalStateException(
+                "구글이 응답을 줬지만 name이 비어있습니다. (place_id=" + place.getGooglePlaceId() + ")");
         }
 
         // [STEP 2] 기초 정보 업데이트 및 DB 저장 (이름/위경도 확정)
@@ -105,6 +119,22 @@ public class PlaceAnalysisService {
                 Map<String, Object> locMap = (Map<String, Object>) geometry.get("location");
                 place.setLatitude(((Number) locMap.get("lat")).doubleValue());
                 place.setLongitude(((Number) locMap.get("lng")).doubleValue());
+            }
+        }
+
+        // 영업 정보 저장
+        place.setBusinessStatus((String) details.getOrDefault("business_status", null));
+        place.setPhoneNumber((String) details.getOrDefault("formatted_phone_number", null));
+        place.setWebsite((String) details.getOrDefault("website", null));
+        if (details.containsKey("price_level")) {
+            place.setPriceLevel(((Number) details.get("price_level")).intValue());
+        }
+        if (details.containsKey("opening_hours")) {
+            try {
+                place.setOpeningHours(objectMapper.writeValueAsString(details.get("opening_hours")));
+                log.info(">>>> 영업시간 저장 완료: {}", place.getName());
+            } catch (Exception e) {
+                log.warn(">>>> opening_hours 직렬화 실패: {}", e.getMessage());
             }
         }
 
