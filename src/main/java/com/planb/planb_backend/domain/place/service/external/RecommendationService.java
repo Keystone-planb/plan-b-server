@@ -18,7 +18,6 @@ import java.util.stream.Collectors;
 public class RecommendationService {
 
     private final GooglePlaceApiService googlePlaceApiService;
-    private final PlaceAnalysisService placeAnalysisService;
     private final PlaceRepository placeRepository;
     private final ScoringStrategy scoringStrategy;
 
@@ -64,23 +63,18 @@ public class RecommendationService {
             if (existingPlaceOpt.isPresent()) {
                 // 2. 이미 있다면 정보 업데이트 (중복 저장 방지)
                 place = existingPlaceOpt.get();
-                log.info(">>>> [중복 방지] 기존 장소 업데이트: {}", place.getName());
-
+                log.info(">>>> [중복 방지] 기존 장소 사용: {}", place.getName());
                 updatePlaceInfo(place, result);
                 placeRepository.saveAndFlush(place);
             } else {
-                // 3. 없다면 새로 생성 및 AI 분석 진행
+                // 3. 없다면 기본 정보만 저장 — AI 분석은 하지 않음
+                // (AI 분석은 /api/places/{placeId}/analyze 로 별도 요청하거나
+                //  추후 백그라운드 배치로 처리. 추천 응답 속도 우선)
                 Place newPlace = new Place();
                 newPlace.setGooglePlaceId(gId);
                 updatePlaceInfo(newPlace, result);
-
-                Place savedPlace = placeRepository.saveAndFlush(newPlace);
-                try {
-                    place = placeAnalysisService.processPlaceAnalysis(savedPlace.getId());
-                } catch (Exception e) {
-                    log.error("실시간 AI 분석 실패(gId: {}): {}", gId, e.getMessage());
-                    place = savedPlace;
-                }
+                place = placeRepository.saveAndFlush(newPlace);
+                log.info(">>>> [신규 장소 등록] AI 분석 보류: {}", place.getName());
             }
 
             // [2차 검열 로직] 유저가 요청한 카테고리와 AI 분석 타입 비교
