@@ -28,7 +28,8 @@ public class GooglePlaceApiService {
                     .uri(uriBuilder -> uriBuilder
                             .path("/details/json")
                             .queryParam("place_id", googlePlaceId)
-                            .queryParam("fields", "name,reviews,rating,user_ratings_total,geometry,types")
+                            .queryParam("fields", "name,reviews,rating,user_ratings_total,geometry,types," +
+                                    "formatted_phone_number,website,opening_hours,business_status,price_level")
                             .queryParam("language", "ko")
                             .queryParam("key", apiKey)
                             .build())
