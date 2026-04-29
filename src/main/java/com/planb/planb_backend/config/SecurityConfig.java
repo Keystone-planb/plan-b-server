@@ -20,10 +20,12 @@ import org.springframework.security.config.http.SessionCreationPolicy;
 import org.springframework.security.oauth2.client.web.OAuth2AuthorizationRequestRedirectFilter;
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
+import org.springframework.security.web.firewall.HttpFirewall;
+import org.springframework.security.web.firewall.StrictHttpFirewall;
+import org.springframework.security.config.annotation.web.configuration.WebSecurityCustomizer;
 import org.springframework.web.cors.CorsConfiguration;
 import org.springframework.web.cors.CorsConfigurationSource;
 import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
-import org.springframework.web.util.UriComponentsBuilder;
 
 import java.util.Arrays;
 import java.util.List;
@@ -95,12 +97,11 @@ public class SecurityConfig {
                     clear.setMaxAge(0);
                     response.addCookie(clear);
 
-                    String redirectUrl = UriComponentsBuilder.fromUriString(targetUri)
-                            .queryParam("error", "소셜 로그인에 실패했습니다.")
-                            .build().toUriString();
+                    String encodedError = java.net.URLEncoder.encode("소셜 로그인에 실패했습니다.", java.nio.charset.StandardCharsets.UTF_8);
+                    String redirectUrl = targetUri + "?error=" + encodedError;
                     response.setStatus(HttpServletResponse.SC_FOUND);
                     response.setHeader("Location", redirectUrl);
-                    response.flushBuffer();
+                    // flushBuffer() 제거 — AWS ELB 환경에서 IllegalStateException 유발 가능
                 })
             )
 
@@ -110,6 +111,24 @@ public class SecurityConfig {
             .addFilterBefore(new JwtFilter(jwtProvider), UsernamePasswordAuthenticationFilter.class);
 
         return http.build();
+    }
+
+    @Bean
+    public WebSecurityCustomizer webSecurityCustomizer() {
+        return web -> web.httpFirewall(allowDoubleSlashFirewall());
+    }
+
+    /**
+     * StrictHttpFirewall 커스터마이징
+     * 기본 설정에서 "//" 를 경로 조작 공격으로 차단하는데,
+     * planb://oauth/success 같은 커스텀 URI 스킴이 redirect_uri 파라미터에 포함될 때 걸림
+     * → allowUrlEncodedDoubleSlash(true) 로 허용
+     */
+    @Bean
+    public HttpFirewall allowDoubleSlashFirewall() {
+        StrictHttpFirewall firewall = new StrictHttpFirewall();
+        firewall.setAllowUrlEncodedDoubleSlash(true);
+        return firewall;
     }
 
     @Bean
