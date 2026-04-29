@@ -120,13 +120,61 @@ public class RecommendationService {
         }
 
         // [STEP 6] 최종 스코어링 및 상위 5개 선발
-        return candidates.stream()
+        List<Place> top5 = candidates.stream()
                 .sorted((p1, p2) -> Double.compare(
                         scoringStrategy.calculateScore(p2, context),
                         scoringStrategy.calculateScore(p1, context)
                 ))
                 .limit(5)
                 .collect(Collectors.toList());
+
+        // [STEP 7] 상위 5개에 대해서만 영업정보(phone, website, opening_hours) 보강
+        // Nearby Search에서 제공하지 않는 필드를 Place Details API로 빠르게 채움
+        // 5건 × ~1~2초 = 최대 10초로 타임아웃 위험 없음
+        top5.forEach(place -> enrichBusinessInfo(place));
+
+        return top5;
+    }
+
+    /**
+     * 최종 추천 장소의 영업정보 보강
+     * phone, website, 전체 opening_hours 등 Nearby Search에 없는 필드를 Place Details로 채움
+     * 이미 채워진 값은 덮어쓰지 않음 (analyze로 저장된 데이터 보존)
+     */
+    private void enrichBusinessInfo(Place place) {
+        if (place.getGooglePlaceId() == null) return;
+        try {
+            Map<String, Object> details = googlePlaceApiService.getPlaceBusinessInfo(place.getGooglePlaceId());
+            if (details == null || details.isEmpty()) return;
+
+            if (place.getPhoneNumber() == null && details.containsKey("formatted_phone_number")) {
+                place.setPhoneNumber((String) details.get("formatted_phone_number"));
+            }
+            if (place.getWebsite() == null && details.containsKey("website")) {
+                place.setWebsite((String) details.get("website"));
+            }
+            if (place.getPriceLevel() == null && details.containsKey("price_level")) {
+                place.setPriceLevel(((Number) details.get("price_level")).intValue());
+            }
+            if (place.getBusinessStatus() == null && details.containsKey("business_status")) {
+                place.setBusinessStatus((String) details.get("business_status"));
+            }
+            // opening_hours 전체 (요일별 시간 포함) — 기존 값이 open_now만 있으면 덮어씀
+            if (details.containsKey("opening_hours")) {
+                try {
+                    com.fasterxml.jackson.databind.ObjectMapper mapper = new com.fasterxml.jackson.databind.ObjectMapper();
+                    place.setOpeningHours(mapper.writeValueAsString(details.get("opening_hours")));
+                } catch (Exception e) {
+                    log.warn("opening_hours 직렬화 실패: {}", place.getGooglePlaceId());
+                }
+            }
+            placeRepository.saveAndFlush(place);
+            log.info("[영업정보 보강] {} — phone:{}, website:{}", place.getName(),
+                    place.getPhoneNumber() != null ? "있음" : "없음",
+                    place.getWebsite() != null ? "있음" : "없음");
+        } catch (Exception e) {
+            log.warn("[영업정보 보강 실패] {}: {}", place.getName(), e.getMessage());
+        }
     }
 
     /**

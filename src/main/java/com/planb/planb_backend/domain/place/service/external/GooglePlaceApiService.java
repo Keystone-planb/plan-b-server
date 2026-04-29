@@ -47,6 +47,36 @@ public class GooglePlaceApiService {
     }
 
     /**
+     * 구글 Place Details API (경량) — 영업정보만 조회
+     * 리뷰/AI 분석 없이 phone, website, opening_hours, price_level만 빠르게 가져옴
+     * 추천 최종 5개 장소에 대해서만 호출 (속도 최적화)
+     */
+    public Map<String, Object> getPlaceBusinessInfo(String googlePlaceId) {
+        try {
+            Map response = webClient.get()
+                    .uri(uriBuilder -> uriBuilder
+                            .path("/details/json")
+                            .queryParam("place_id", googlePlaceId)
+                            .queryParam("fields",
+                                    "formatted_phone_number,website,opening_hours,price_level,business_status")
+                            .queryParam("language", "ko")
+                            .queryParam("key", apiKey)
+                            .build())
+                    .retrieve()
+                    .bodyToMono(Map.class)
+                    .block();
+
+            if (response == null || !response.containsKey("result")) {
+                return Collections.emptyMap();
+            }
+            return (Map<String, Object>) response.get("result");
+        } catch (Exception e) {
+            log.error("Google 영업정보 조회 실패 (ID: {}): {}", googlePlaceId, e.getMessage());
+            return Collections.emptyMap();
+        }
+    }
+
+    /**
      * 구글 Nearby Search API — 주변 장소 목록 조회 (1차 필터링 포함)
      */
     public List<Map<String, Object>> searchNearbyPlaces(Double lat, Double lng, int radiusMeters, String category) {
