@@ -8,6 +8,7 @@ import lombok.Getter;
 import lombok.Setter;
 import org.hibernate.annotations.JdbcTypeCode;
 import org.hibernate.type.SqlTypes;
+import org.locationtech.jts.geom.Point;
 
 import java.time.LocalDateTime;
 
@@ -59,9 +60,19 @@ public class Place {
     private Double latitude;
     private Double longitude;
 
+    /**
+     * PostGIS 공간 좌표 컬럼 (EPSG:4326 — WGS84)
+     * - 향후 공간 인덱스 기반 반경 검색 최적화에 사용 (ST_DWithin 등)
+     * - 현재는 latitude/longitude 기반 Haversine 사용 중, 마이그레이션 예정
+     * - hibernate-spatial 의존성으로 JTS Point 타입 자동 매핑
+     */
+    @Column(columnDefinition = "geometry(Point, 4326)")
+    private Point location;
+
     // --- [영업 정보] ---
+    @Enumerated(EnumType.STRING)
     @Column(name = "business_status", length = 30)
-    private String businessStatus;   // OPERATIONAL / CLOSED_TEMPORARILY / CLOSED_PERMANENTLY
+    private BusinessStatus businessStatus;
 
     @Column(name = "opening_hours", columnDefinition = "jsonb")
     @JdbcTypeCode(SqlTypes.JSON)

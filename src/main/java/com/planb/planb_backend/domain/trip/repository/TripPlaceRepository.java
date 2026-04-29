@@ -22,11 +22,21 @@ public interface TripPlaceRepository extends JpaRepository<TripPlace, Long> {
 
     /**
      * 특정 유저의 오늘 이후 일정을 날짜/방문 시간 오름차순으로 조회
-     * (다음 목적지 자동 추적용)
+     * (레거시: userId 기준 — 현재는 findUpcomingByTripId 사용)
      */
     @Query("SELECT tp FROM TripPlace tp " +
            "WHERE tp.itinerary.trip.user.id = :userId " +
            "AND tp.itinerary.date >= :today " +
            "ORDER BY tp.itinerary.date ASC, tp.visitTime ASC")
     List<TripPlace> findUpcomingByUserId(@Param("userId") Long userId, @Param("today") LocalDate today);
+
+    /**
+     * 특정 여행(tripId) 기준 오늘 이후 일정을 날짜/방문 시간 오름차순으로 조회
+     * (다음 목적지 자동 추적 — trip 범위로 한정해 동선 보너스 정확도 향상)
+     */
+    @Query("SELECT tp FROM TripPlace tp " +
+           "WHERE tp.itinerary.trip.tripId = :tripId " +
+           "AND tp.itinerary.date >= :today " +
+           "ORDER BY tp.itinerary.date ASC, tp.visitTime ASC")
+    List<TripPlace> findUpcomingByTripId(@Param("tripId") Long tripId, @Param("today") LocalDate today);
 }

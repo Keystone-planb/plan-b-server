@@ -1,6 +1,7 @@
 package com.planb.planb_backend.domain.place.service.external;
 
 import com.planb.planb_backend.domain.place.dto.UserContext;
+import com.planb.planb_backend.domain.place.entity.BusinessStatus;
 import com.planb.planb_backend.domain.place.entity.Place;
 import com.planb.planb_backend.domain.place.repository.PlaceRepository;
 import com.planb.planb_backend.domain.trip.entity.PlaceType;
@@ -31,8 +32,8 @@ public class RecommendationService {
     public List<Place> getRecommendations(UserContext context) {
 
         // [STEP 1] 다음 일정 자동 추적 (동선 가중치용)
-        // considerNextPlan=true인데 프론트에서 좌표를 안 넘긴 경우, DB에서 자동 조회
-        if (context.isConsiderNextPlan() && context.getNextLat() == null && context.getUserId() != null) {
+        // considerNextPlan=true인데 프론트에서 좌표를 안 넘긴 경우, 현재 여행(tripId) 기준으로 DB 자동 조회
+        if (context.isConsiderNextPlan() && context.getNextLat() == null && context.getTripId() != null) {
             resolveNextDestination(context);
         }
 
@@ -67,9 +68,9 @@ public class RecommendationService {
             String gId = (String) result.get("place_id");
 
             // ① 영업 상태 필터 — OPERATIONAL인 것만 통과
-            String businessStatus = (String) result.get("business_status");
-            if (businessStatus != null && !"OPERATIONAL".equalsIgnoreCase(businessStatus)) {
-                log.info(">>>> [영업 상태 탈락] gId={}, status={}", gId, businessStatus);
+            String businessStatusRaw = (String) result.get("business_status");
+            if (businessStatusRaw != null && !BusinessStatus.OPERATIONAL.name().equalsIgnoreCase(businessStatusRaw)) {
+                log.info(">>>> [영업 상태 탈락] gId={}, status={}", gId, businessStatusRaw);
                 continue;
             }
 
@@ -157,7 +158,12 @@ public class RecommendationService {
                 place.setPriceLevel(((Number) details.get("price_level")).intValue());
             }
             if (place.getBusinessStatus() == null && details.containsKey("business_status")) {
-                place.setBusinessStatus((String) details.get("business_status"));
+                String bsRaw = (String) details.get("business_status");
+                try {
+                    place.setBusinessStatus(BusinessStatus.valueOf(bsRaw.toUpperCase()));
+                } catch (IllegalArgumentException e) {
+                    log.warn("알 수 없는 business_status (영업정보 보강): {}", bsRaw);
+                }
             }
             // opening_hours 전체 (요일별 시간 포함) — 기존 값이 open_now만 있으면 덮어씀
             if (details.containsKey("opening_hours")) {
@@ -179,14 +185,15 @@ public class RecommendationService {
 
     /**
      * 다음 목적지 자동 추적
-     * - 오늘 이후 TripPlace 중 현재 시각 이후 첫 번째 일정을 찾아 UserContext에 주입
+     * - 현재 여행(tripId) 기준으로 오늘 이후 TripPlace 중 현재 시각 이후 첫 번째 일정을 찾아 UserContext에 주입
+     * - trip_id 범위로 한정해 다른 여행의 일정이 섞이는 문제 방지
      * - Place 좌표가 DB에 없으면 건너뜀
      */
     private void resolveNextDestination(UserContext context) {
         LocalDate today = LocalDate.now();
         String nowTime = LocalTime.now().format(DateTimeFormatter.ofPattern("HH:mm"));
 
-        List<TripPlace> upcoming = tripPlaceRepository.findUpcomingByUserId(context.getUserId(), today);
+        List<TripPlace> upcoming = tripPlaceRepository.findUpcomingByTripId(context.getTripId(), today);
 
         for (TripPlace tp : upcoming) {
             // 오늘 일정이면 현재 시각 이후인 것만 허용
@@ -238,7 +245,12 @@ public class RecommendationService {
 
         // 영업 상태
         if (result.containsKey("business_status")) {
-            place.setBusinessStatus((String) result.get("business_status"));
+            String bsRaw = (String) result.get("business_status");
+            try {
+                place.setBusinessStatus(BusinessStatus.valueOf(bsRaw.toUpperCase()));
+            } catch (IllegalArgumentException e) {
+                log.warn("알 수 없는 business_status: {}", bsRaw);
+            }
         }
 
         // 가격대 (0=무료 ~ 4=매우 비쌈)

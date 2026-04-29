@@ -1,6 +1,7 @@
 package com.planb.planb_backend.domain.place.service.external;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.planb.planb_backend.domain.place.entity.BusinessStatus;
 import com.planb.planb_backend.domain.place.entity.Place;
 import com.planb.planb_backend.domain.place.repository.PlaceRepository;
 import com.planb.planb_backend.domain.trip.entity.Mood;
@@ -123,7 +124,14 @@ public class PlaceAnalysisService {
         }
 
         // 영업 정보 저장
-        place.setBusinessStatus((String) details.getOrDefault("business_status", null));
+        String bsRaw = (String) details.getOrDefault("business_status", null);
+        if (bsRaw != null) {
+            try {
+                place.setBusinessStatus(BusinessStatus.valueOf(bsRaw.toUpperCase()));
+            } catch (IllegalArgumentException e) {
+                log.warn(">>>> 알 수 없는 business_status: {}", bsRaw);
+            }
+        }
         place.setPhoneNumber((String) details.getOrDefault("formatted_phone_number", null));
         place.setWebsite((String) details.getOrDefault("website", null));
         if (details.containsKey("price_level")) {

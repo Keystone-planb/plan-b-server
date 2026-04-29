@@ -3,8 +3,6 @@ package com.planb.planb_backend.domain.recommendation.dto;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 
-import java.time.LocalDateTime;
-
 @Getter
 @NoArgsConstructor
 public class RecommendRequest {
@@ -13,7 +11,6 @@ public class RecommendRequest {
     private Long userId;
     private Long tripId;                       // 중복 제외 및 다음 일정 추적에 사용
     private Long currentPlanId;                // keepOriginalCategory=true 일 때 원본 카테고리 조회용
-    private LocalDateTime currentPlanStartTime;
 
     /** 현재 위치 */
     private Double currentLat;

@@ -21,7 +21,14 @@ public class Itinerary {
     private Long itineraryId;
 
     @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "trip_id", nullable = false)
+    @JoinColumn(
+        name = "trip_id",
+        nullable = false,
+        foreignKey = @ForeignKey(
+            name = "fk_itinerary_trip",
+            foreignKeyDefinition = "FOREIGN KEY (trip_id) REFERENCES trips(trip_id) ON DELETE CASCADE"
+        )
+    )
     private Trip trip;
 
     @Column(nullable = false)

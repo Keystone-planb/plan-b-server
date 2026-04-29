@@ -2,8 +2,6 @@ package com.planb.planb_backend.domain.place.dto;
 
 import lombok.*;
 
-import java.time.LocalDateTime;
-
 @Getter
 @Setter
 @NoArgsConstructor
@@ -14,7 +12,6 @@ public class UserContext {
     private Long userId;
     private Long tripId;               // SOS 발동된 여행 ID — 중복 제외 및 다음 일정 추적에 사용
     private Long currentPlanId;
-    private LocalDateTime currentPlanStartTime;
 
     private Double currentLat;
     private Double currentLng;

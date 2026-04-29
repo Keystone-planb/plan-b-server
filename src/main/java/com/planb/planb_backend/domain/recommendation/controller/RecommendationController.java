@@ -49,7 +49,6 @@ public class RecommendationController {
                 .userId(user.getId())
                 .tripId(request.getTripId())
                 .currentPlanId(request.getCurrentPlanId())
-                .currentPlanStartTime(request.getCurrentPlanStartTime())
                 .currentLat(request.getCurrentLat())
                 .currentLng(request.getCurrentLng())
                 .radiusMinute(request.getRadiusMinute())

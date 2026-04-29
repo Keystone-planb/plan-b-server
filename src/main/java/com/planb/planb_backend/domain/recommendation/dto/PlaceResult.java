@@ -51,7 +51,7 @@ public class PlaceResult {
                 .latitude(place.getLatitude())
                 .longitude(place.getLongitude())
                 .reviewSummary(extractTotalSummary(place.getReviewData()))
-                .businessStatus(place.getBusinessStatus())
+                .businessStatus(place.getBusinessStatus() != null ? place.getBusinessStatus().name() : null)
                 .openingHours(place.getOpeningHours())
                 .phoneNumber(place.getPhoneNumber())
                 .website(place.getWebsite())
