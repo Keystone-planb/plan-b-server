@@ -23,6 +23,7 @@ public class PlaceResult {
     private Integer reviewCount;
     private Double latitude;
     private Double longitude;
+    private String address;             // 한국어 주소
     private String reviewSummary;       // AI 종합 한줄 요약
 
     // 영업 정보
@@ -50,6 +51,7 @@ public class PlaceResult {
                 .reviewCount(place.getUserRatingsTotal())
                 .latitude(place.getLatitude())
                 .longitude(place.getLongitude())
+                .address(place.getAddress())
                 .reviewSummary(extractTotalSummary(place.getReviewData()))
                 .businessStatus(place.getBusinessStatus() != null ? place.getBusinessStatus().name() : null)
                 .openingHours(place.getOpeningHours())

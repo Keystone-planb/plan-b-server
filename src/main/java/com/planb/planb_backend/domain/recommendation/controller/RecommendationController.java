@@ -5,6 +5,8 @@ import com.planb.planb_backend.domain.place.entity.Place;
 import com.planb.planb_backend.domain.place.service.external.PlaceAnalysisService;
 import com.planb.planb_backend.domain.place.service.external.RecommendationService;
 import com.planb.planb_backend.domain.recommendation.dto.*;
+import com.planb.planb_backend.domain.trip.dto.AddLocationResponse;
+import com.planb.planb_backend.domain.trip.dto.UpdateScheduleRequest;
 import com.planb.planb_backend.domain.trip.service.TripService;
 import com.planb.planb_backend.domain.user.entity.User;
 import com.planb.planb_backend.domain.user.repository.UserRepository;
@@ -126,6 +128,25 @@ public class RecommendationController {
                 .name("[" + request.getNewPlaceName() + "] (PLAN B)")
                 .message("일정이 PLAN B로 대체되었습니다.")
                 .build());
+    }
+
+    /**
+     * PATCH /api/plans/{planId}/schedule
+     * 장소는 그대로, 방문 시간(visitTime/endTime)과 메모만 수정
+     */
+    @Operation(
+        summary = "일정 시간/메모 수정",
+        description = "장소는 유지하면서 방문 시작 시간, 종료 시간, 메모만 수정합니다. 시간 겹침 시 400 에러를 반환합니다."
+    )
+    @PatchMapping("/plans/{planId}/schedule")
+    public ResponseEntity<AddLocationResponse> updateSchedule(
+            @PathVariable Long planId,
+            @RequestBody UpdateScheduleRequest request,
+            Authentication authentication) {
+
+        AddLocationResponse response = tripService.updateTripPlaceSchedule(
+                authentication.getName(), planId, request);
+        return ResponseEntity.ok(response);
     }
 
     private User findUser(String email) {

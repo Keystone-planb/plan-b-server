@@ -27,7 +27,10 @@ public class TripPlace {
     private String name;
 
     @Column(name = "visit_time", length = 10)
-    private String visitTime;   // "09:00" 형식
+    private String visitTime;   // 시작 시간 "HH:mm"
+
+    @Column(name = "end_time", length = 10)
+    private String endTime;     // 종료 시간 "HH:mm"
 
     @Column(name = "visit_order")
     private int visitOrder;     // 방문 순서
@@ -35,9 +38,22 @@ public class TripPlace {
     @Column(length = 500)
     private String memo;        // 사용자 메모
 
-    /** PLAN B 대체 적용: 장소 ID와 이름을 새 값으로 교체 */
+    /**
+     * PLAN B 대체: 장소 ID와 이름을 새 값으로 교체
+     * 시간/메모는 새 장소 맞게 다시 설정해야 하므로 null 초기화
+     */
     public void replace(String newPlaceId, String newPlaceName) {
-        this.placeId = newPlaceId;
-        this.name = "[" + newPlaceName + "] (PLAN B)";
+        this.placeId   = newPlaceId;
+        this.name      = "[" + newPlaceName + "] (PLAN B)";
+        this.visitTime = null;
+        this.endTime   = null;
+        this.memo      = null;
+    }
+
+    /** 시간/메모 수정: 장소는 그대로, 스케줄 정보만 업데이트 */
+    public void updateSchedule(String visitTime, String endTime, String memo) {
+        this.visitTime = visitTime;
+        this.endTime   = endTime;
+        this.memo      = memo;
     }
 }

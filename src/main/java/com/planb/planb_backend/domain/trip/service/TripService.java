@@ -14,8 +14,8 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDate;
+import java.time.LocalTime;
 import java.time.temporal.ChronoUnit;
-import com.planb.planb_backend.domain.trip.dto.TripListResponse;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -45,7 +45,6 @@ public class TripService {
                 .travelStyles(new ArrayList<>(request.getTravelStyles()))
                 .build();
 
-        // 날짜 수만큼 Itinerary 자동 생성
         long totalDays = ChronoUnit.DAYS.between(request.getStartDate(), request.getEndDate()) + 1;
         for (int i = 0; i < totalDays; i++) {
             Itinerary itinerary = Itinerary.builder()
@@ -60,8 +59,8 @@ public class TripService {
     }
 
     /**
-     * GET /api/trips — 내 여행 목록 조회 (status 필터 지원)
-     * status: UPCOMING(예정) / PAST(지난) / ALL(전체)
+     * GET /api/trips — 내 여행 목록 조회 (status 필터)
+     * status: UPCOMING / PAST / ALL
      */
     public List<TripListResponse> getMyTrips(String email, String status) {
         User user = findUser(email);
@@ -72,14 +71,14 @@ public class TripService {
                 .filter(trip -> switch (status.toUpperCase()) {
                     case "UPCOMING" -> today.isBefore(trip.getStartDate());
                     case "PAST"     -> today.isAfter(trip.getEndDate());
-                    default         -> true; // ALL
+                    default         -> true;
                 })
                 .map(TripListResponse::from)
                 .toList();
     }
 
     /**
-     * GET /api/trips/{id} — 특정 여행 상세 조회
+     * GET /api/trips/{id} — 여행 상세 조회
      */
     public TripDetailResponse getTripDetail(String email, Long tripId) {
         User user = findUser(email);
@@ -99,7 +98,7 @@ public class TripService {
     }
 
     /**
-     * DELETE /api/trips/{id} — 여행 계획 삭제 (Itinerary, TripPlace 연쇄 삭제)
+     * DELETE /api/trips/{id} — 여행 계획 삭제
      */
     @Transactional
     public void deleteTrip(String email, Long tripId) {
@@ -110,6 +109,7 @@ public class TripService {
 
     /**
      * POST /api/trips/{id}/days/{day}/locations — 특정 일차에 장소 추가
+     * visitTime/endTime이 있으면 해당 일차의 기존 일정과 시간대 겹침 검증
      */
     @Transactional
     public AddLocationResponse addLocation(String email, Long tripId, int day, AddLocationRequest request) {
@@ -119,6 +119,9 @@ public class TripService {
         Itinerary itinerary = itineraryRepository.findByTripAndDay(trip, day)
                 .orElseThrow(() -> new IllegalArgumentException(day + "일차 일정을 찾을 수 없습니다."));
 
+        // 시간 겹침 검증
+        validateTimeOverlap(itinerary, request.getVisitTime(), request.getEndTime(), null);
+
         int nextOrder = itinerary.getPlaces().size() + 1;
 
         TripPlace tripPlace = TripPlace.builder()
@@ -126,6 +129,7 @@ public class TripService {
                 .placeId(request.getPlaceId())
                 .name(request.getName())
                 .visitTime(request.getVisitTime())
+                .endTime(request.getEndTime())
                 .visitOrder(nextOrder)
                 .memo(request.getMemo())
                 .build();
@@ -134,14 +138,30 @@ public class TripService {
     }
 
     /**
-     * POST /api/plans/{planId}/replace — 일정 장소 대체
-     * TripPlace의 placeId와 name을 새 장소로 교체하고 "(PLAN B)" 표시
+     * POST /api/plans/{planId}/replace — 일정 장소 PLAN B 대체
+     * placeId/name 교체 + visitTime/endTime/memo null 초기화
      */
     @Transactional
     public void replaceTripPlace(String email, Long tripPlaceId, String newGooglePlaceId, String newPlaceName) {
         TripPlace tripPlace = tripPlaceRepository.findByIdAndUserEmail(tripPlaceId, email)
                 .orElseThrow(() -> new IllegalArgumentException("일정을 찾을 수 없거나 접근 권한이 없습니다."));
         tripPlace.replace(newGooglePlaceId, newPlaceName);
+    }
+
+    /**
+     * PATCH /api/plans/{planId}/schedule — 장소는 그대로, 시간/메모만 수정
+     * visitTime/endTime이 있으면 해당 일차의 기존 일정과 시간대 겹침 검증 (자기 자신 제외)
+     */
+    @Transactional
+    public AddLocationResponse updateTripPlaceSchedule(String email, Long tripPlaceId, UpdateScheduleRequest request) {
+        TripPlace tripPlace = tripPlaceRepository.findByIdAndUserEmail(tripPlaceId, email)
+                .orElseThrow(() -> new IllegalArgumentException("일정을 찾을 수 없거나 접근 권한이 없습니다."));
+
+        // 시간 겹침 검증 (자기 자신은 제외)
+        validateTimeOverlap(tripPlace.getItinerary(), request.getVisitTime(), request.getEndTime(), tripPlaceId);
+
+        tripPlace.updateSchedule(request.getVisitTime(), request.getEndTime(), request.getMemo());
+        return AddLocationResponse.from(tripPlace);
     }
 
     // ── private 헬퍼 ────────────────────────────────────────────────
@@ -154,5 +174,37 @@ public class TripService {
     private Trip findTripByOwner(Long tripId, User user) {
         return tripRepository.findByTripIdAndUser(tripId, user)
                 .orElseThrow(() -> new IllegalArgumentException("여행을 찾을 수 없거나 접근 권한이 없습니다."));
+    }
+
+    /**
+     * 시간대 겹침 검증
+     * - visitTime 또는 endTime 중 하나라도 null이면 스킵 (시간 미설정 허용)
+     * - excludeTripPlaceId: 자기 자신 수정 시 자신을 비교 대상에서 제외
+     * - 겹침 조건: newStart < existEnd AND existStart < newEnd
+     */
+    private void validateTimeOverlap(Itinerary itinerary, String visitTime, String endTime, Long excludeTripPlaceId) {
+        if (visitTime == null || endTime == null) return;
+
+        LocalTime newStart = LocalTime.parse(visitTime);
+        LocalTime newEnd   = LocalTime.parse(endTime);
+
+        if (!newEnd.isAfter(newStart)) {
+            throw new IllegalArgumentException("종료 시간(" + endTime + ")은 시작 시간(" + visitTime + ")보다 늦어야 합니다.");
+        }
+
+        for (TripPlace existing : itinerary.getPlaces()) {
+            if (excludeTripPlaceId != null && existing.getTripPlaceId().equals(excludeTripPlaceId)) continue;
+            if (existing.getVisitTime() == null || existing.getEndTime() == null) continue;
+
+            LocalTime existStart = LocalTime.parse(existing.getVisitTime());
+            LocalTime existEnd   = LocalTime.parse(existing.getEndTime());
+
+            if (newStart.isBefore(existEnd) && existStart.isBefore(newEnd)) {
+                throw new IllegalArgumentException(
+                    String.format("'%s'의 시간대(%s ~ %s)와 겹칩니다. 다른 시간대를 선택해주세요.",
+                        existing.getName(), existing.getVisitTime(), existing.getEndTime())
+                );
+            }
+        }
     }
 }

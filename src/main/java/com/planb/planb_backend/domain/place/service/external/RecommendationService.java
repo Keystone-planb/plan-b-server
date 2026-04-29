@@ -148,6 +148,12 @@ public class RecommendationService {
             Map<String, Object> details = googlePlaceApiService.getPlaceBusinessInfo(place.getGooglePlaceId());
             if (details == null || details.isEmpty()) return;
 
+            if (place.getAddress() == null && details.containsKey("formatted_address")) {
+                String addr = (String) details.get("formatted_address");
+                if (addr != null && !addr.isBlank()) {
+                    place.setAddress(addr);
+                }
+            }
             if (place.getPhoneNumber() == null && details.containsKey("formatted_phone_number")) {
                 place.setPhoneNumber((String) details.get("formatted_phone_number"));
             }
@@ -224,6 +230,12 @@ public class RecommendationService {
     private void updatePlaceInfo(Place place, Map<String, Object> result) {
         // 이름
         place.setName((String) result.get("name"));
+
+        // 주소 (Nearby Search는 vicinity 제공)
+        String vicinity = (String) result.get("vicinity");
+        if (vicinity != null && !vicinity.isBlank()) {
+            place.setAddress(vicinity);
+        }
 
         // 좌표
         try {

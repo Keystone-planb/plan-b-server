@@ -12,6 +12,7 @@ public class AddLocationResponse {
     private String placeId;
     private String name;
     private String visitTime;
+    private String endTime;
     private int visitOrder;
     private String memo;
 
@@ -21,6 +22,7 @@ public class AddLocationResponse {
                 .placeId(tripPlace.getPlaceId())
                 .name(tripPlace.getName())
                 .visitTime(tripPlace.getVisitTime())
+                .endTime(tripPlace.getEndTime())
                 .visitOrder(tripPlace.getVisitOrder())
                 .memo(tripPlace.getMemo())
                 .build();

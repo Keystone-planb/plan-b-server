@@ -15,7 +15,9 @@ public class AddLocationRequest {
     @NotBlank(message = "장소 이름은 필수입니다.")
     private String name;
 
-    private String visitTime;  // "HH:mm" 형식 (선택)
+    private String visitTime;  // 시작 시간 "HH:mm" (선택)
+
+    private String endTime;    // 종료 시간 "HH:mm" (선택)
 
     private String memo;       // 사용자 메모 (선택)
 }

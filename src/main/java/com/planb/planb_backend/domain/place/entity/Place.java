@@ -56,6 +56,10 @@ public class Place {
     @Column(name = "photo_url", columnDefinition = "text")
     private String photoUrl;
 
+    // --- [주소] ---
+    @Column(columnDefinition = "text")
+    private String address;     // 한글 주소 (Google formatted_address, language=ko)
+
     // --- [좌표] ---
     private Double latitude;
     private Double longitude;
@@ -89,4 +93,5 @@ public class Place {
 
     @Column(name = "last_synced_at")
     private LocalDateTime lastSyncedAt;
+
 }

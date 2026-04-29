@@ -7,6 +7,10 @@ import com.planb.planb_backend.domain.trip.entity.TripPlace;
 import lombok.Getter;
 
 import java.time.LocalDate;
+import java.time.LocalTime;
+import java.time.temporal.ChronoUnit;
+import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.List;
 
 @Getter
@@ -46,13 +50,45 @@ public class TripDetailResponse {
             this.itineraryId = itinerary.getItineraryId();
             this.day         = itinerary.getDay();
             this.date        = itinerary.getDate();
-            this.places      = itinerary.getPlaces().stream()
-                    .map(PlaceResponse::from)
-                    .toList();
+            this.places      = buildPlaceResponses(itinerary);
         }
 
         public static ItineraryResponse from(Itinerary itinerary) {
             return new ItineraryResponse(itinerary);
+        }
+
+        /**
+         * visitTime 기준 오름차순 정렬 후,
+         * 이전 장소 endTime ↔ 다음 장소 visitTime 사이의 여유 시간(분)을 계산해서 주입
+         */
+        private static List<PlaceResponse> buildPlaceResponses(Itinerary itinerary) {
+            // visitTime null이면 맨 뒤로 정렬
+            List<TripPlace> sorted = new ArrayList<>(itinerary.getPlaces());
+            sorted.sort(Comparator.comparing(
+                tp -> tp.getVisitTime() != null ? tp.getVisitTime() : "99:99"
+            ));
+
+            List<PlaceResponse> result = new ArrayList<>();
+            for (int i = 0; i < sorted.size(); i++) {
+                TripPlace current = sorted.get(i);
+                Integer gap = null;
+
+                if (i < sorted.size() - 1) {
+                    TripPlace next = sorted.get(i + 1);
+                    if (current.getEndTime() != null && next.getVisitTime() != null) {
+                        try {
+                            LocalTime endT   = LocalTime.parse(current.getEndTime());
+                            LocalTime startT = LocalTime.parse(next.getVisitTime());
+                            long minutes = ChronoUnit.MINUTES.between(endT, startT);
+                            gap = minutes >= 0 ? (int) minutes : null;
+                        } catch (Exception ignored) {
+                            // 시간 파싱 실패 시 gap null 유지
+                        }
+                    }
+                }
+                result.add(PlaceResponse.from(current, gap));
+            }
+            return result;
         }
     }
 
@@ -63,18 +99,25 @@ public class TripDetailResponse {
         private final String placeId;
         private final String name;
         private final String visitTime;
+        private final String endTime;
         private final int visitOrder;
+        private final String memo;
+        /** 다음 장소까지의 여유 시간(분). 마지막 장소는 null */
+        private final Integer transitGapMinutes;
 
-        private PlaceResponse(TripPlace place) {
-            this.tripPlaceId = place.getTripPlaceId();
-            this.placeId     = place.getPlaceId();
-            this.name        = place.getName();
-            this.visitTime   = place.getVisitTime();
-            this.visitOrder  = place.getVisitOrder();
+        private PlaceResponse(TripPlace place, Integer transitGapMinutes) {
+            this.tripPlaceId        = place.getTripPlaceId();
+            this.placeId            = place.getPlaceId();
+            this.name               = place.getName();
+            this.visitTime          = place.getVisitTime();
+            this.endTime            = place.getEndTime();
+            this.visitOrder         = place.getVisitOrder();
+            this.memo               = place.getMemo();
+            this.transitGapMinutes  = transitGapMinutes;
         }
 
-        public static PlaceResponse from(TripPlace place) {
-            return new PlaceResponse(place);
+        public static PlaceResponse from(TripPlace place, Integer transitGapMinutes) {
+            return new PlaceResponse(place, transitGapMinutes);
         }
     }
 }

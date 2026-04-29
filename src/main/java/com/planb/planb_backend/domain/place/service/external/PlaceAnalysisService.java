@@ -132,6 +132,15 @@ public class PlaceAnalysisService {
                 log.warn(">>>> 알 수 없는 business_status: {}", bsRaw);
             }
         }
+        // 한국어 주소 (formatted_address 우선, 없으면 vicinity)
+        String formattedAddress = (String) details.get("formatted_address");
+        String vicinity = (String) details.get("vicinity");
+        if (formattedAddress != null && !formattedAddress.isBlank()) {
+            place.setAddress(formattedAddress);
+        } else if (vicinity != null && !vicinity.isBlank()) {
+            place.setAddress(vicinity);
+        }
+
         place.setPhoneNumber((String) details.getOrDefault("formatted_phone_number", null));
         place.setWebsite((String) details.getOrDefault("website", null));
         if (details.containsKey("price_level")) {
