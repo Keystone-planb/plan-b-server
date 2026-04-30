@@ -12,7 +12,6 @@ import org.springframework.security.oauth2.core.OAuth2AuthenticationException;
 import org.springframework.security.oauth2.core.user.DefaultOAuth2User;
 import org.springframework.security.oauth2.core.user.OAuth2User;
 import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Transactional;
 
 import java.util.List;
 import java.util.Map;
@@ -25,7 +24,6 @@ public class CustomOAuth2UserService extends DefaultOAuth2UserService {
     private final UserRepository userRepository;
 
     @Override
-    @Transactional
     public OAuth2User loadUser(OAuth2UserRequest userRequest) throws OAuth2AuthenticationException {
         OAuth2User oAuth2User = super.loadUser(userRequest);
 
@@ -60,20 +58,23 @@ public class CustomOAuth2UserService extends DefaultOAuth2UserService {
         final String finalNickname = nickname;
         final String finalProviderId = providerId;
 
+        // provider는 소문자로 통일 (저장/조회 모두 동일하게)
+        String providerLower = registrationId.toLowerCase();
+
         User user;
         try {
-            user = userRepository.findByProviderAndProviderId(registrationId, providerId)
+            user = userRepository.findByProviderAndProviderId(providerLower, providerId)
                     .orElseGet(() -> userRepository.save(User.builder()
                             .email(finalEmail)
                             .nickname(finalNickname)
-                            .provider(registrationId.toLowerCase())
+                            .provider(providerLower)
                             .providerId(finalProviderId)
                             .role(Role.USER)
                             .build()));
         } catch (DataIntegrityViolationException e) {
             // 동시 요청으로 중복 저장 시도 시 → 이미 저장된 유저를 다시 조회
-            log.warn("[OAuth2] 중복 저장 감지 (Race Condition) — provider={}, providerId={}", registrationId, providerId);
-            user = userRepository.findByProviderAndProviderId(registrationId, providerId)
+            log.warn("[OAuth2] 중복 저장 감지 (Race Condition) — provider={}, providerId={}", providerLower, providerId);
+            user = userRepository.findByProviderAndProviderId(providerLower, providerId)
                     .orElseThrow(() -> new OAuth2AuthenticationException("소셜 로그인 처리 중 오류가 발생했습니다."));
         }
 
