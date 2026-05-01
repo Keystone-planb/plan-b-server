@@ -66,6 +66,11 @@ public class ScoringStrategy {
         return finalScore;
     }
 
+    /** 외부 서비스(RecommendationService 1차 퍼널 등)에서 사용 가능하도록 public으로 노출 */
+    public double haversine(double lat1, double lon1, double lat2, double lon2) {
+        return calculateHaversine(lat1, lon1, lat2, lon2);
+    }
+
     private double calculateHaversine(double lat1, double lon1, double lat2, double lon2) {
         double R = 6371;
         double dLat = Math.toRadians(lat2 - lat1);

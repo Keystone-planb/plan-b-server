@@ -9,15 +9,33 @@ import com.planb.planb_backend.domain.trip.entity.TripPlace;
 import com.planb.planb_backend.domain.trip.repository.TripPlaceRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDate;
 import java.time.LocalTime;
 import java.time.format.DateTimeFormatter;
 import java.util.*;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.Executor;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
 import java.util.stream.Collectors;
 
+/**
+ * 대안 장소 추천 서비스 — 퍼널(Funnel) + 병렬 처리(Parallel) 아키텍처
+ *
+ * [전체 파이프라인]
+ * ① Google Nearby Search로 후보 20개 수집
+ * ② 1차 퍼널 필터링 (Hard Filter + 1차 스코어링) → 상위 7개 선발
+ * ③ 7개에 대해 CompletableFuture 병렬 심층 분석 (Naver/Insta 스크래핑 + OpenAI)
+ * ④ AI 2차 검열 → 최종 EllipticalBonus 스코어링 → 상위 5개 반환
+ *
+ * [성능]
+ * 기존: 순차 처리 시 최대 400초
+ * 변경: 병렬 처리로 가장 느린 단일 분석 시간(약 15초) 수준으로 단축
+ */
 @Slf4j
 @Service
 @RequiredArgsConstructor
@@ -27,120 +45,312 @@ public class RecommendationService {
     private final PlaceRepository placeRepository;
     private final TripPlaceRepository tripPlaceRepository;
     private final ScoringStrategy scoringStrategy;
+    private final PlaceAnalysisService placeAnalysisService;
+    private final CongestionService congestionService;
 
-    @Transactional
+    // @RequiredArgsConstructor는 final 필드만 처리하므로 @Qualifier 주입은 별도 field injection 사용
+    @Autowired
+    @Qualifier("analysisExecutor")
+    private Executor analysisExecutor;
+
+    private static final int FUNNEL_TOP_N   = 7;   // 1차 퍼널 선발 인원
+    private static final int FINAL_TOP_N    = 5;   // 최종 반환 인원
+    private static final int MIN_REVIEW_COUNT = 10; // Hard Filter: 최소 리뷰 수
+    private static final long ANALYSIS_TIMEOUT_SEC = 45; // 병렬 분석 전체 타임아웃 (초)
+
+    // ═══════════════════════════════════════════════════════
+    //  메인 추천 파이프라인
+    // ═══════════════════════════════════════════════════════
+
     public List<Place> getRecommendations(UserContext context) {
 
         // [STEP 1] 다음 일정 자동 추적 (동선 가중치용)
-        // considerNextPlan=true인데 프론트에서 좌표를 안 넘긴 경우, 현재 여행(tripId) 기준으로 DB 자동 조회
         if (context.isConsiderNextPlan() && context.getNextLat() == null && context.getTripId() != null) {
             resolveNextDestination(context);
         }
 
         // [STEP 2] 검색 반경 계산
-        int radiusMeters = context.isWalk() ? (context.getRadiusMinute() * 80) : (context.getRadiusMinute() * 400);
-        log.info("검색 반경 설정: {}m (도보여부: {})", radiusMeters, context.isWalk());
+        int radiusMeters = context.isWalk()
+                ? context.getRadiusMinute() * 80
+                : context.getRadiusMinute() * 400;
+        log.info("[STEP 2] 검색 반경: {}m (도보: {})", radiusMeters, context.isWalk());
 
-        // [STEP 2.5] 이번 여행에 이미 등록된 장소 목록 수집 (중복 제외용)
-        Set<String> excludedGooglePlaceIds = new HashSet<>();
-        if (context.getTripId() != null) {
-            tripPlaceRepository.findByTripId(context.getTripId())
-                    .forEach(tp -> {
-                        if (tp.getPlaceId() != null) {
-                            excludedGooglePlaceIds.add(tp.getPlaceId());
-                        }
-                    });
-            log.info("[중복 제외] 같은 여행 등록 장소 {}개 제외 처리", excludedGooglePlaceIds.size());
-        }
+        // [STEP 2.5] 이번 여행 중복 제외 목록 수집
+        Set<String> excludedIds = collectExcludedPlaceIds(context);
 
-        // [STEP 3] 구글 Nearby Search로 데이터 수집
+        // [STEP 3] Google Nearby Search
         List<Map<String, Object>> googleResults = googlePlaceApiService.searchNearbyPlaces(
                 context.getCurrentLat(),
                 context.getCurrentLng(),
                 radiusMeters,
                 context.getRequestedCategory()
         );
+        log.info("[STEP 3] Google 검색 결과: {}개", googleResults.size());
 
-        List<Place> candidates = new ArrayList<>();
+        // [STEP 4] DB Upsert (결과를 Place 엔티티로 변환·저장)
+        // @Transactional 없이 실행 → saveAndFlush() 가 각각 즉시 커밋
+        // → 이후 병렬 분석 스레드에서 READ COMMITTED로 정상 조회 가능
+        List<Place> allCandidates = upsertCandidates(googleResults, excludedIds);
+        log.info("[STEP 4] Upsert 완료: {}개 후보", allCandidates.size());
 
-        // [STEP 4] 데이터 계층화 및 '중복 체크/Upsert' 루프
-        for (Map<String, Object> result : googleResults) {
-            String gId = (String) result.get("place_id");
+        // [STEP 5] 1차 퍼널 필터링 → 상위 7개 선발
+        List<Place> top7 = applyFunnelFilter(allCandidates, context);
+        log.info("[STEP 5] 1차 퍼널 선발: {}개", top7.size());
 
-            // ① 영업 상태 필터 — OPERATIONAL인 것만 통과
-            String businessStatusRaw = (String) result.get("business_status");
-            if (businessStatusRaw != null && !BusinessStatus.OPERATIONAL.name().equalsIgnoreCase(businessStatusRaw)) {
-                log.info(">>>> [영업 상태 탈락] gId={}, status={}", gId, businessStatusRaw);
-                continue;
-            }
-
-            // ② 이번 여행 중복 제외
-            if (excludedGooglePlaceIds.contains(gId)) {
-                log.info(">>>> [중복 일정 탈락] 이미 여행에 등록된 장소: {}", gId);
-                continue;
-            }
-
-            // DB Upsert
-            Place place;
-            Optional<Place> existingPlaceOpt = placeRepository.findByGooglePlaceId(gId);
-            if (existingPlaceOpt.isPresent()) {
-                place = existingPlaceOpt.get();
-                log.info(">>>> [기존 장소 사용] {}", place.getName());
-                updatePlaceInfo(place, result);
-                placeRepository.saveAndFlush(place);
-            } else {
-                Place newPlace = new Place();
-                newPlace.setGooglePlaceId(gId);
-                updatePlaceInfo(newPlace, result);
-                place = placeRepository.saveAndFlush(newPlace);
-                log.info(">>>> [신규 장소 등록] AI 분석 보류: {}", place.getName());
-            }
-
-            // ③ AI 2차 검열 — keepOriginalCategory=true 이면 스킵
-            if (!context.isKeepOriginalCategory()) {
-                String requestedCategory = context.getRequestedCategory();
-                PlaceType aiDetectedType = place.getType();
-                if (requestedCategory != null && aiDetectedType != null) {
-                    if (!aiDetectedType.name().equalsIgnoreCase(requestedCategory)) {
-                        log.info(">>>> [2차 검열 탈락] 장소: {}, 요청: {}, AI분석: {} → 제외",
-                                place.getName(), requestedCategory, aiDetectedType);
-                        continue;
-                    }
-                }
-            }
-
-            candidates.add(place);
-        }
-
-        // [STEP 5] 지능형 범위 확장 (Smart Expansion)
-        if (candidates.size() < 3 && context.getRadiusMinute() < 40) {
-            int expandedMinute = (int)(context.getRadiusMinute() * 1.5);
-            log.info("검색 결과 부족으로 범위 확장: {}분 -> {}분", context.getRadiusMinute(), expandedMinute);
-            context.setRadiusMinute(expandedMinute);
+        // [STEP 5.5] 결과 부족 시 반경 스마트 확장
+        if (top7.size() < 3 && context.getRadiusMinute() < 40) {
+            int expanded = (int)(context.getRadiusMinute() * 1.5);
+            log.info("[STEP 5.5] 반경 확장: {}분 → {}분", context.getRadiusMinute(), expanded);
+            context.setRadiusMinute(expanded);
             return getRecommendations(context);
         }
 
-        // [STEP 6] 최종 스코어링 및 상위 5개 선발
-        List<Place> top5 = candidates.stream()
+        // [STEP 6] 2차 심층 분석 — CompletableFuture 병렬 처리
+        List<Place> analyzed = parallelAnalyze(top7);
+
+        // [STEP 6.5] AI 2차 검열 (keepOriginalCategory=false 일 때)
+        List<Place> afterAiFilter = applyAiCategoryFilter(analyzed, context);
+
+        // [STEP 7] 최종 EllipticalBonus 스코어링 → 상위 5개 선발
+        List<Place> top5 = afterAiFilter.stream()
                 .sorted((p1, p2) -> Double.compare(
                         scoringStrategy.calculateScore(p2, context),
-                        scoringStrategy.calculateScore(p1, context)
-                ))
-                .limit(5)
+                        scoringStrategy.calculateScore(p1, context)))
+                .limit(FINAL_TOP_N)
                 .collect(Collectors.toList());
 
-        // [STEP 7] 상위 5개에 대해서만 영업정보(phone, website, opening_hours) 보강
-        // Nearby Search에서 제공하지 않는 필드를 Place Details API로 빠르게 채움
-        // 5건 × ~1~2초 = 최대 10초로 타임아웃 위험 없음
-        top5.forEach(place -> enrichBusinessInfo(place));
-
+        log.info("[STEP 7] 최종 추천 완료: {}개", top5.size());
         return top5;
     }
 
+    // ═══════════════════════════════════════════════════════
+    //  STEP 4: DB Upsert
+    // ═══════════════════════════════════════════════════════
+
     /**
-     * 최종 추천 장소의 영업정보 보강
-     * phone, website, 전체 opening_hours 등 Nearby Search에 없는 필드를 Place Details로 채움
-     * 이미 채워진 값은 덮어쓰지 않음 (analyze로 저장된 데이터 보존)
+     * Google Nearby 결과를 DB에 저장(신규) 또는 갱신(기존)하여 Place 리스트로 반환
+     * - @Transactional 없음: saveAndFlush()가 각 호출마다 독립 트랜잭션으로 즉시 커밋
+     * - 병렬 분석 스레드가 READ COMMITTED로 커밋된 데이터를 읽을 수 있게 함
+     */
+    private List<Place> upsertCandidates(List<Map<String, Object>> googleResults,
+                                          Set<String> excludedIds) {
+        List<Place> candidates = new ArrayList<>();
+
+        for (Map<String, Object> result : googleResults) {
+            String gId = (String) result.get("place_id");
+            if (gId == null) continue;
+
+            // 이번 여행 중복 제외
+            if (excludedIds.contains(gId)) {
+                log.info("[Upsert-중복 제외] {}", gId);
+                continue;
+            }
+
+            try {
+                Place place = placeRepository.findByGooglePlaceId(gId)
+                        .orElseGet(() -> {
+                            Place newPlace = new Place();
+                            newPlace.setGooglePlaceId(gId);
+                            return newPlace;
+                        });
+
+                updatePlaceInfo(place, result);
+                Place saved = placeRepository.saveAndFlush(place);
+                candidates.add(saved);
+
+            } catch (Exception e) {
+                log.warn("[Upsert 실패] gId={}: {}", gId, e.getMessage());
+            }
+        }
+        return candidates;
+    }
+
+    // ═══════════════════════════════════════════════════════
+    //  STEP 5: 1차 퍼널 필터링
+    // ═══════════════════════════════════════════════════════
+
+    /**
+     * Hard Filter + 1차 스코어링으로 상위 7개 선발
+     *
+     * Hard Filter 탈락 조건:
+     *   1) businessStatus != OPERATIONAL
+     *   2) 구글 리뷰 수 < 10
+     *   3) 이름·좌표 누락
+     *
+     * 1차 스코어링:
+     *   - 기초 신뢰도: 구글 평점 × 리뷰 수
+     *   - 거리 페널티: 현재 위치 기준 Haversine 거리 (5km 기준 선형 감점)
+     *   - 혼잡도 페널티: Redis TTL 2h 이내 제보 장소 → 점수 × 0.05 (사실상 후순위)
+     */
+    private List<Place> applyFunnelFilter(List<Place> candidates, UserContext context) {
+        return candidates.stream()
+                .filter(p -> {
+                    // Hard Filter A: 영업 상태
+                    if (p.getBusinessStatus() != null
+                            && p.getBusinessStatus() != BusinessStatus.OPERATIONAL) {
+                        log.info("[퍼널-탈락] 영업 중단 ({}): {}", p.getBusinessStatus(), p.getName());
+                        return false;
+                    }
+                    return true;
+                })
+                .filter(p -> {
+                    // Hard Filter B: 리뷰 수
+                    int cnt = p.getUserRatingsTotal() != null ? p.getUserRatingsTotal() : 0;
+                    if (cnt < MIN_REVIEW_COUNT) {
+                        log.info("[퍼널-탈락] 리뷰 부족 ({}개): {}", cnt, p.getName());
+                        return false;
+                    }
+                    return true;
+                })
+                .filter(p -> {
+                    // Hard Filter C: 필수 메타데이터
+                    boolean valid = p.getName() != null && !p.getName().isBlank()
+                            && p.getLatitude() != null && p.getLongitude() != null;
+                    if (!valid) log.info("[퍼널-탈락] 메타데이터 누락: id={}", p.getId());
+                    return valid;
+                })
+                .sorted((p1, p2) -> Double.compare(
+                        calculateFunnelScore(p2, context),
+                        calculateFunnelScore(p1, context)))
+                .limit(FUNNEL_TOP_N)
+                .collect(Collectors.toList());
+    }
+
+    /**
+     * 1차 퍼널 스코어 계산
+     * - baseScore       = 구글 평점 × 리뷰 수  (기초 신뢰도)
+     * - distancePenalty = max(0.1, 1.0 - distKm / 5.0)  (5km 기준 선형 감점)
+     * - congestionMult  = Redis 혼잡 제보 있으면 0.05, 없으면 1.0
+     */
+    private double calculateFunnelScore(Place place, UserContext context) {
+        double rating      = place.getRating() != null ? place.getRating() : 0.0;
+        int    reviewCount = place.getUserRatingsTotal() != null ? place.getUserRatingsTotal() : 0;
+        double baseScore   = rating * reviewCount;
+
+        double distanceKm = scoringStrategy.haversine(
+                context.getCurrentLat(), context.getCurrentLng(),
+                place.getLatitude(), place.getLongitude());
+        double distancePenalty = Math.max(0.1, 1.0 - (distanceKm / 5.0));
+
+        double congestionMult = 1.0;
+        if (place.getGooglePlaceId() != null
+                && congestionService.isCongested(place.getGooglePlaceId())) {
+            log.info("[퍼널-혼잡 페널티] {}", place.getName());
+            congestionMult = 0.05;
+        }
+
+        return baseScore * distancePenalty * congestionMult;
+    }
+
+    // ═══════════════════════════════════════════════════════
+    //  STEP 6: 병렬 심층 분석
+    // ═══════════════════════════════════════════════════════
+
+    /**
+     * 상위 7개 장소에 대해 Naver/Insta 스크래핑 + OpenAI 분석을 CompletableFuture로 병렬 실행
+     *
+     * - 각 Future는 analysisExecutor(corePoolSize=7)에서 동시 실행
+     * - allOf().get(45s) 로 가장 느린 작업 완료 시점에 취합
+     * - 개별 분석 실패(외부 API 오류, Rate Limit 등)는 exceptionally에서 캐치 →
+     *   원본 place 반환으로 전체 흐름 차단 방지
+     * - 타임아웃 초과 시 취합된 결과만 반환 (완료된 분석은 유효)
+     */
+    private List<Place> parallelAnalyze(List<Place> top7) {
+        log.info("[STEP 6] 병렬 심층 분석 시작: {}개 장소", top7.size());
+
+        List<CompletableFuture<Place>> futures = top7.stream()
+                .map(place -> CompletableFuture
+                        .supplyAsync(() -> analyzeOnce(place), analysisExecutor)
+                        .exceptionally(ex -> {
+                            log.warn("[병렬 분석 실패] {} — 원본 유지: {}",
+                                    place.getName(), ex.getMessage());
+                            return place;
+                        }))
+                .collect(Collectors.toList());
+
+        try {
+            CompletableFuture.allOf(futures.toArray(new CompletableFuture[0]))
+                    .get(ANALYSIS_TIMEOUT_SEC, TimeUnit.SECONDS);
+        } catch (TimeoutException e) {
+            log.warn("[병렬 분석 타임아웃] {}초 초과 — 완료된 결과만 사용", ANALYSIS_TIMEOUT_SEC);
+        } catch (Exception e) {
+            log.warn("[병렬 분석 취합 오류]: {}", e.getMessage());
+        }
+
+        List<Place> results = futures.stream()
+                .map(f -> f.getNow(null))   // 완료됐으면 결과, 아직이면 null
+                .filter(Objects::nonNull)
+                .collect(Collectors.toList());
+
+        log.info("[STEP 6] 병렬 분석 완료: {}개 취합", results.size());
+        return results;
+    }
+
+    /**
+     * 단일 장소 심층 분석 (병렬 작업 단위)
+     * PlaceAnalysisService.processPlaceAnalysis() 위임
+     * - @Transactional이 붙은 Spring 프록시 메서드를 호출하므로 각 스레드에서 독립 트랜잭션 생성
+     * - 실패 시 enrichBusinessInfo로 경량 보강 시도
+     */
+    private Place analyzeOnce(Place place) {
+        try {
+            return placeAnalysisService.processPlaceAnalysis(place.getId());
+        } catch (Exception e) {
+            log.warn("[단일 분석 오류] {} (id={}): {} — 영업정보 경량 보강 시도",
+                    place.getName(), place.getId(), e.getMessage());
+            enrichBusinessInfo(place);
+            return place;
+        }
+    }
+
+    // ═══════════════════════════════════════════════════════
+    //  STEP 6.5: AI 2차 검열
+    // ═══════════════════════════════════════════════════════
+
+    /**
+     * keepOriginalCategory=false 일 때,
+     * AI가 분석한 PlaceType이 요청 카테고리와 다른 장소를 제외
+     */
+    private List<Place> applyAiCategoryFilter(List<Place> places, UserContext context) {
+        if (context.isKeepOriginalCategory()) return places;
+
+        String requested = context.getRequestedCategory();
+        if (requested == null || requested.isBlank()) return places;
+
+        return places.stream()
+                .filter(p -> {
+                    PlaceType aiType = p.getType();
+                    if (aiType == null) return true; // 분석 미완료 장소는 통과
+                    if (!aiType.name().equalsIgnoreCase(requested)) {
+                        log.info("[AI 2차 검열-탈락] {}: 요청={}, AI분석={}",
+                                p.getName(), requested, aiType);
+                        return false;
+                    }
+                    return true;
+                })
+                .collect(Collectors.toList());
+    }
+
+    // ═══════════════════════════════════════════════════════
+    //  헬퍼 메서드
+    // ═══════════════════════════════════════════════════════
+
+    /** 같은 여행에 이미 등록된 Google Place ID 수집 (중복 제외용) */
+    private Set<String> collectExcludedPlaceIds(UserContext context) {
+        Set<String> excluded = new HashSet<>();
+        if (context.getTripId() == null) return excluded;
+
+        tripPlaceRepository.findByTripId(context.getTripId())
+                .forEach(tp -> {
+                    if (tp.getPlaceId() != null) excluded.add(tp.getPlaceId());
+                });
+        log.info("[중복 제외] 같은 여행 등록 장소 {}개", excluded.size());
+        return excluded;
+    }
+
+    /**
+     * 분석 실패한 장소에 대한 경량 영업정보 보강
+     * Nearby Search에 없는 phone, website, full opening_hours 를 Place Details API로 채움
      */
     private void enrichBusinessInfo(Place place) {
         if (place.getGooglePlaceId() == null) return;
@@ -150,9 +360,7 @@ public class RecommendationService {
 
             if (place.getAddress() == null && details.containsKey("formatted_address")) {
                 String addr = (String) details.get("formatted_address");
-                if (addr != null && !addr.isBlank()) {
-                    place.setAddress(addr);
-                }
+                if (addr != null && !addr.isBlank()) place.setAddress(addr);
             }
             if (place.getPhoneNumber() == null && details.containsKey("formatted_phone_number")) {
                 place.setPhoneNumber((String) details.get("formatted_phone_number"));
@@ -168,22 +376,20 @@ public class RecommendationService {
                 try {
                     place.setBusinessStatus(BusinessStatus.valueOf(bsRaw.toUpperCase()));
                 } catch (IllegalArgumentException e) {
-                    log.warn("알 수 없는 business_status (영업정보 보강): {}", bsRaw);
+                    log.warn("[영업정보 보강] 알 수 없는 business_status: {}", bsRaw);
                 }
             }
-            // opening_hours 전체 (요일별 시간 포함) — 기존 값이 open_now만 있으면 덮어씀
             if (details.containsKey("opening_hours")) {
                 try {
-                    com.fasterxml.jackson.databind.ObjectMapper mapper = new com.fasterxml.jackson.databind.ObjectMapper();
+                    com.fasterxml.jackson.databind.ObjectMapper mapper =
+                            new com.fasterxml.jackson.databind.ObjectMapper();
                     place.setOpeningHours(mapper.writeValueAsString(details.get("opening_hours")));
                 } catch (Exception e) {
-                    log.warn("opening_hours 직렬화 실패: {}", place.getGooglePlaceId());
+                    log.warn("[영업정보 보강] opening_hours 직렬화 실패: {}", place.getGooglePlaceId());
                 }
             }
             placeRepository.saveAndFlush(place);
-            log.info("[영업정보 보강] {} — phone:{}, website:{}", place.getName(),
-                    place.getPhoneNumber() != null ? "있음" : "없음",
-                    place.getWebsite() != null ? "있음" : "없음");
+            log.info("[영업정보 경량 보강 완료] {}", place.getName());
         } catch (Exception e) {
             log.warn("[영업정보 보강 실패] {}: {}", place.getName(), e.getMessage());
         }
@@ -191,24 +397,19 @@ public class RecommendationService {
 
     /**
      * 다음 목적지 자동 추적
-     * - 현재 여행(tripId) 기준으로 오늘 이후 TripPlace 중 현재 시각 이후 첫 번째 일정을 찾아 UserContext에 주입
-     * - trip_id 범위로 한정해 다른 여행의 일정이 섞이는 문제 방지
-     * - Place 좌표가 DB에 없으면 건너뜀
+     * 현재 여행(tripId) 기준 오늘 이후 TripPlace 중 현재 시각 이후 첫 번째 일정 → UserContext 주입
      */
     private void resolveNextDestination(UserContext context) {
-        LocalDate today = LocalDate.now();
-        String nowTime = LocalTime.now().format(DateTimeFormatter.ofPattern("HH:mm"));
+        LocalDate today   = LocalDate.now();
+        String   nowTime  = LocalTime.now().format(DateTimeFormatter.ofPattern("HH:mm"));
 
         List<TripPlace> upcoming = tripPlaceRepository.findUpcomingByTripId(context.getTripId(), today);
 
         for (TripPlace tp : upcoming) {
-            // 오늘 일정이면 현재 시각 이후인 것만 허용
             if (tp.getItinerary().getDate().isEqual(today)) {
                 String visitTime = tp.getVisitTime();
                 if (visitTime == null || visitTime.compareTo(nowTime) <= 0) continue;
             }
-
-            // Google Place ID로 DB에서 좌표 조회
             Place nextPlace = placeRepository.findByGooglePlaceId(tp.getPlaceId()).orElse(null);
             if (nextPlace != null && nextPlace.getLatitude() != null && nextPlace.getLongitude() != null) {
                 context.setNextLat(nextPlace.getLatitude());
@@ -218,36 +419,31 @@ public class RecommendationService {
                 return;
             }
         }
-        log.info("[다음 목적지 탐색] 조건에 맞는 다음 일정 없음 — 동선 보너스 비활성화");
+        log.info("[다음 목적지 탐색] 조건 맞는 일정 없음 — 동선 보너스 비활성화");
     }
 
     /**
-     * 구글 Nearby Search 결과로부터 Place 엔티티 정보를 업데이트
-     * - Nearby Search가 포함하는 필드: name, geometry, rating, user_ratings_total,
-     *   business_status, opening_hours(open_now만), price_level, photos
-     * - phone, website, full opening_hours 등은 Place Details API 전용 (analyze 시 저장)
+     * Google Nearby Search 결과로 Place 엔티티 정보 업데이트
+     * (Nearby Search 제공 필드: name, geometry, rating, user_ratings_total,
+     *  business_status, opening_hours(open_now), price_level, photos, vicinity)
      */
     private void updatePlaceInfo(Place place, Map<String, Object> result) {
-        // 이름
         place.setName((String) result.get("name"));
 
-        // 주소 (Nearby Search는 vicinity 제공)
         String vicinity = (String) result.get("vicinity");
         if (vicinity != null && !vicinity.isBlank()) {
             place.setAddress(vicinity);
         }
 
-        // 좌표
         try {
             Map<String, Object> geometry = (Map<String, Object>) result.get("geometry");
             Map<String, Object> location = (Map<String, Object>) geometry.get("location");
             place.setLatitude(((Number) location.get("lat")).doubleValue());
             place.setLongitude(((Number) location.get("lng")).doubleValue());
         } catch (Exception e) {
-            log.warn("위경도 정보 추출 실패: {}", place.getGooglePlaceId());
+            log.warn("[updatePlaceInfo] 위경도 추출 실패: {}", place.getGooglePlaceId());
         }
 
-        // 평점 / 리뷰 수
         if (result.containsKey("rating")) {
             place.setRating(((Number) result.get("rating")).doubleValue());
         }
@@ -255,45 +451,39 @@ public class RecommendationService {
             place.setUserRatingsTotal(((Number) result.get("user_ratings_total")).intValue());
         }
 
-        // 영업 상태
         if (result.containsKey("business_status")) {
-            String bsRaw = (String) result.get("business_status");
             try {
-                place.setBusinessStatus(BusinessStatus.valueOf(bsRaw.toUpperCase()));
+                place.setBusinessStatus(BusinessStatus.valueOf(
+                        ((String) result.get("business_status")).toUpperCase()));
             } catch (IllegalArgumentException e) {
-                log.warn("알 수 없는 business_status: {}", bsRaw);
+                log.warn("[updatePlaceInfo] 알 수 없는 business_status: {}", result.get("business_status"));
             }
         }
-
-        // 가격대 (0=무료 ~ 4=매우 비쌈)
         if (result.containsKey("price_level")) {
             place.setPriceLevel(((Number) result.get("price_level")).intValue());
         }
-
-        // 영업시간 — Nearby Search는 open_now(현재 영업 여부)만 포함
-        // 전체 요일별 시간은 Place Details API(analyze)에서 저장됨
         if (result.containsKey("opening_hours")) {
             try {
-                Object openingHours = result.get("opening_hours");
-                com.fasterxml.jackson.databind.ObjectMapper mapper = new com.fasterxml.jackson.databind.ObjectMapper();
-                place.setOpeningHours(mapper.writeValueAsString(openingHours));
+                com.fasterxml.jackson.databind.ObjectMapper mapper =
+                        new com.fasterxml.jackson.databind.ObjectMapper();
+                place.setOpeningHours(mapper.writeValueAsString(result.get("opening_hours")));
             } catch (Exception e) {
-                log.warn("opening_hours 직렬화 실패: {}", place.getGooglePlaceId());
+                log.warn("[updatePlaceInfo] opening_hours 직렬화 실패: {}", place.getGooglePlaceId());
             }
         }
-
-        // 대표 사진 URL
         if (result.containsKey("photos")) {
             try {
                 List<Map<String, Object>> photos = (List<Map<String, Object>>) result.get("photos");
                 if (photos != null && !photos.isEmpty()) {
                     String photoRef = (String) photos.get(0).get("photo_reference");
                     if (photoRef != null) {
-                        place.setPhotoUrl("https://maps.googleapis.com/maps/api/place/photo?maxwidth=400&photoreference=" + photoRef);
+                        place.setPhotoUrl(
+                                "https://maps.googleapis.com/maps/api/place/photo?maxwidth=400&photoreference="
+                                        + photoRef);
                     }
                 }
             } catch (Exception e) {
-                log.warn("photo_url 추출 실패: {}", place.getGooglePlaceId());
+                log.warn("[updatePlaceInfo] photo_url 추출 실패: {}", place.getGooglePlaceId());
             }
         }
     }
