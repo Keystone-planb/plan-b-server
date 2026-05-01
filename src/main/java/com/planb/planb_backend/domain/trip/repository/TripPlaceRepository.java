@@ -39,4 +39,13 @@ public interface TripPlaceRepository extends JpaRepository<TripPlace, Long> {
            "AND tp.itinerary.date >= :today " +
            "ORDER BY tp.itinerary.date ASC, tp.visitTime ASC")
     List<TripPlace> findUpcomingByTripId(@Param("tripId") Long tripId, @Param("today") LocalDate today);
+
+    /**
+     * 날씨 스케줄러용 — 오늘/내일 일정 전체 조회
+     * (WeatherScheduler에서 24시간 이내 일정 필터링에 사용)
+     */
+    @Query("SELECT tp FROM TripPlace tp " +
+           "WHERE tp.itinerary.date = :today OR tp.itinerary.date = :tomorrow " +
+           "ORDER BY tp.itinerary.date ASC, tp.visitTime ASC")
+    List<TripPlace> findForScheduler(@Param("today") LocalDate today, @Param("tomorrow") LocalDate tomorrow);
 }

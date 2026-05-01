@@ -93,6 +93,9 @@ google:
   maps:
     api-key: ${GOOGLE_MAPS_API_KEY}
 
+weather:
+  api-key: ${WEATHER_API_KEY:}
+
 logging:
   level:
     # Spring Security 필터 체인 흐름 (어느 필터에서 막히는지 확인)

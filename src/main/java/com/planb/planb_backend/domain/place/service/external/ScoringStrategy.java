@@ -2,10 +2,19 @@ package com.planb.planb_backend.domain.place.service.external;
 
 import com.planb.planb_backend.domain.place.entity.Place;
 import com.planb.planb_backend.domain.place.dto.UserContext;
+import com.planb.planb_backend.domain.preference.repository.UserPreferenceRepository;
+import com.planb.planb_backend.domain.trip.entity.Mood;
+import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 
+@Slf4j
 @Component
 public class ScoringStrategy {
+
+    // @RequiredArgsConstructor 미사용 → 기존 코드 변경 없이 field injection
+    @Autowired
+    private UserPreferenceRepository userPreferenceRepository;
 
     public double calculateScore(Place candidate, UserContext context) {
         // 1. 기초 품질 점수
@@ -63,7 +72,36 @@ public class ScoringStrategy {
             }
         }
 
+        // 5. Mood 개인화 가중치 — 모든 스코어링이 끝난 후 마지막에 적용
+        // 공식: 1 + score × 0.15, 범위 클램프 [0.7, 2.0]
+        if (context.getUserId() != null && candidate.getMood() != null) {
+            finalScore *= getMoodPreferenceMultiplier(context.getUserId(), candidate.getMood());
+        }
+
         return finalScore;
+    }
+
+    /**
+     * Mood 개인화 가중치 계산
+     * - 공식: 1 + score × 0.15
+     * - 클램프: [0.7, 2.0] — 과도한 편향 방지
+     * - 선호 이력 없으면 1.0 (중립)
+     */
+    private double getMoodPreferenceMultiplier(Long userId, Mood mood) {
+        try {
+            return userPreferenceRepository.findByUserIdAndMood(userId, mood)
+                    .map(pref -> {
+                        double raw = 1.0 + pref.getScore() * 0.15;
+                        double clamped = Math.min(2.0, Math.max(0.7, raw));
+                        log.debug("[MoodPreference] userId={}, mood={}, score={}, multiplier={}",
+                                userId, mood, pref.getScore(), clamped);
+                        return clamped;
+                    })
+                    .orElse(1.0);
+        } catch (Exception e) {
+            log.warn("[MoodPreference] 가중치 조회 실패 — 중립 적용: {}", e.getMessage());
+            return 1.0;
+        }
     }
 
     /** 외부 서비스(RecommendationService 1차 퍼널 등)에서 사용 가능하도록 public으로 노출 */
