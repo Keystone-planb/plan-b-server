@@ -14,6 +14,7 @@ import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.stereotype.Service;
 
 import java.time.LocalDate;
+import java.time.LocalDateTime;
 import java.time.LocalTime;
 import java.time.format.DateTimeFormatter;
 import java.util.*;
@@ -53,10 +54,11 @@ public class RecommendationService {
     @Qualifier("analysisExecutor")
     private Executor analysisExecutor;
 
-    private static final int FUNNEL_TOP_N   = 7;   // 1차 퍼널 선발 인원
-    private static final int FINAL_TOP_N    = 5;   // 최종 반환 인원
-    private static final int MIN_REVIEW_COUNT = 10; // Hard Filter: 최소 리뷰 수
+    private static final int FUNNEL_TOP_N        = 7;  // 1차 퍼널 선발 인원
+    private static final int FINAL_TOP_N         = 5;  // 최종 반환 인원
+    private static final int MIN_REVIEW_COUNT    = 10; // Hard Filter: 최소 리뷰 수
     private static final long ANALYSIS_TIMEOUT_SEC = 45; // 병렬 분석 전체 타임아웃 (초)
+    private static final int CACHE_VALID_DAYS    = 7;  // 분석 캐시 유효 기간 (일)
 
     // ═══════════════════════════════════════════════════════
     //  메인 추천 파이프라인
@@ -288,11 +290,24 @@ public class RecommendationService {
 
     /**
      * 단일 장소 심층 분석 (병렬 작업 단위)
-     * PlaceAnalysisService.processPlaceAnalysis() 위임
-     * - @Transactional이 붙은 Spring 프록시 메서드를 호출하므로 각 스레드에서 독립 트랜잭션 생성
-     * - 실패 시 enrichBusinessInfo로 경량 보강 시도
+     *
+     * [캐시 체크] lastSyncedAt이 CACHE_VALID_DAYS(7일) 이내이면 재분석 스킵 → 즉시 반환
+     *   - 인기 지역 재요청 시 OpenAI 호출 없이 DB 캐시 데이터 사용
+     *   - 효과: 기분석 장소 비율이 높을수록 전체 응답시간 대폭 단축
+     *
+     * [분석 실행] 캐시 미스 or 오래된 데이터 → processPlaceAnalysis 위임
+     *   - 실패 시 enrichBusinessInfo로 경량 보강 후 반환 (전체 흐름 차단 방지)
      */
     private Place analyzeOnce(Place place) {
+        // 캐시 히트: 7일 이내 분석된 장소는 재분석 스킵
+        if (place.getLastSyncedAt() != null
+                && place.getLastSyncedAt().isAfter(LocalDateTime.now().minusDays(CACHE_VALID_DAYS))) {
+            log.info("[분석 캐시 히트] {} — 마지막 분석: {}", place.getName(), place.getLastSyncedAt());
+            return place;
+        }
+
+        // 캐시 미스: 신규 or 오래된 장소 → AI 분석 실행
+        log.info("[분석 실행] {} (lastSyncedAt={})", place.getName(), place.getLastSyncedAt());
         try {
             return placeAnalysisService.processPlaceAnalysis(place.getId());
         } catch (Exception e) {
