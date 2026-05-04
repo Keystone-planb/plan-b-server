@@ -76,7 +76,7 @@ class RecommendationStreamTest {
                 .currentLat(37.5700)
                 .currentLng(126.9700)
                 .radiusMinute(20)
-                .walk(false)
+                .transportMode(null)
                 .keepOriginalCategory(true)
                 .considerNextPlan(false)
                 .build();
@@ -143,7 +143,7 @@ class RecommendationStreamTest {
                 .currentLat(37.5700)
                 .currentLng(126.9700)
                 .radiusMinute(20)
-                .walk(false)
+                .transportMode(null)
                 .keepOriginalCategory(true)
                 .considerNextPlan(false)
                 .build();
@@ -182,7 +182,7 @@ class RecommendationStreamTest {
                 .currentLat(37.5700)
                 .currentLng(126.9700)
                 .radiusMinute(20)
-                .walk(false)
+                .transportMode(null)
                 .keepOriginalCategory(true)
                 .considerNextPlan(false)
                 .build();
@@ -217,7 +217,7 @@ class RecommendationStreamTest {
                 .currentLat(37.5700)
                 .currentLng(126.9700)
                 .radiusMinute(20)
-                .walk(false)
+                .transportMode(null)
                 .keepOriginalCategory(false)  // AI 검열 활성화
                 .selectedType("FOOD")          // FOOD 요청
                 .considerNextPlan(false)

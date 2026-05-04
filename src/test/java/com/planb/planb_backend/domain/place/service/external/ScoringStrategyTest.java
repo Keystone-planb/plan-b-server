@@ -49,7 +49,7 @@ class ScoringStrategyTest {
                 .currentLat(37.5800)
                 .currentLng(126.9760)
                 .radiusMinute(20)
-                .walk(false)
+                .transportMode(null)
                 .considerNextPlan(false)
                 .build();
     }
@@ -68,7 +68,7 @@ class ScoringStrategyTest {
                 .currentLat(baseContext.getCurrentLat())
                 .currentLng(baseContext.getCurrentLng())
                 .radiusMinute(baseContext.getRadiusMinute())
-                .walk(false)
+                .transportMode(null)
                 .considerNextPlan(false)
                 .build();
 
@@ -91,7 +91,7 @@ class ScoringStrategyTest {
                 .currentLat(baseContext.getCurrentLat())
                 .currentLng(baseContext.getCurrentLng())
                 .radiusMinute(baseContext.getRadiusMinute())
-                .walk(false)
+                .transportMode(null)
                 .considerNextPlan(false)
                 .build();
 
@@ -115,7 +115,7 @@ class ScoringStrategyTest {
                 .currentLat(baseContext.getCurrentLat())
                 .currentLng(baseContext.getCurrentLng())
                 .radiusMinute(baseContext.getRadiusMinute())
-                .walk(false)
+                .transportMode(null)
                 .considerNextPlan(false)
                 .build();
 
@@ -139,7 +139,7 @@ class ScoringStrategyTest {
                 .currentLat(baseContext.getCurrentLat())
                 .currentLng(baseContext.getCurrentLng())
                 .radiusMinute(baseContext.getRadiusMinute())
-                .walk(false)
+                .transportMode(null)
                 .considerNextPlan(false)
                 .build();
 
@@ -186,7 +186,7 @@ class ScoringStrategyTest {
                 .currentLat(37.5796)
                 .currentLng(126.9770)
                 .radiusMinute(10)  // 10분 차량 = 4km 반경
-                .walk(false)
+                .transportMode(null)
                 .considerNextPlan(false)
                 .build();
 
@@ -222,7 +222,7 @@ class ScoringStrategyTest {
                 .currentLat(37.5700)
                 .currentLng(126.9700)
                 .radiusMinute(30)
-                .walk(false)
+                .transportMode(null)
                 .considerNextPlan(true)
                 .nextLat(37.5500)
                 .nextLng(126.9900)

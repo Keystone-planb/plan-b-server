@@ -2,6 +2,7 @@ package com.planb.planb_backend.domain.trip.service;
 
 import com.planb.planb_backend.domain.trip.dto.*;
 import com.planb.planb_backend.domain.trip.entity.Itinerary;
+import com.planb.planb_backend.domain.trip.entity.TransportMode;
 import com.planb.planb_backend.domain.trip.entity.Trip;
 import com.planb.planb_backend.domain.trip.entity.TripPlace;
 import com.planb.planb_backend.domain.trip.repository.ItineraryRepository;
@@ -162,6 +163,25 @@ public class TripService {
 
         tripPlace.updateSchedule(request.getVisitTime(), request.getEndTime(), request.getMemo());
         return AddLocationResponse.from(tripPlace);
+    }
+
+    /**
+     * GET /api/trips/{id}/transport-mode — 이동 수단 조회
+     */
+    public TransportMode getTransportMode(String email, Long tripId) {
+        User user = findUser(email);
+        Trip trip = findTripByOwner(tripId, user);
+        return trip.getTransportMode();
+    }
+
+    /**
+     * PATCH /api/trips/{id}/transport-mode — 이동 수단 수정
+     */
+    @Transactional
+    public void updateTransportMode(String email, Long tripId, TransportMode mode) {
+        User user = findUser(email);
+        Trip trip = findTripByOwner(tripId, user);
+        trip.updateTransportMode(mode);
     }
 
     // ── private 헬퍼 ────────────────────────────────────────────────

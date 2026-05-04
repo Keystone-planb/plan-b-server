@@ -48,4 +48,13 @@ public interface TripPlaceRepository extends JpaRepository<TripPlace, Long> {
            "WHERE tp.itinerary.date = :today OR tp.itinerary.date = :tomorrow " +
            "ORDER BY tp.itinerary.date ASC, tp.visitTime ASC")
     List<TripPlace> findForScheduler(@Param("today") LocalDate today, @Param("tomorrow") LocalDate tomorrow);
+
+    /**
+     * [기능 6 — 틈새 추천] 특정 여행의 모든 일정을 날짜·방문순서 오름차순으로 조회
+     * visitTime 이 있는 일정은 HH:mm 문자열로 정렬되므로 같은 날짜 안에서 시간 순 보장.
+     */
+    @Query("SELECT tp FROM TripPlace tp " +
+           "WHERE tp.itinerary.trip.tripId = :tripId " +
+           "ORDER BY tp.itinerary.date ASC, tp.visitOrder ASC")
+    List<TripPlace> findByTripIdOrderByDateAndVisitOrder(@Param("tripId") Long tripId);
 }

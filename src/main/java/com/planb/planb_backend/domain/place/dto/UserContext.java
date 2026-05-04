@@ -1,6 +1,9 @@
 package com.planb.planb_backend.domain.place.dto;
 
+import com.planb.planb_backend.domain.trip.entity.TransportMode;
 import lombok.*;
+
+import java.time.LocalDateTime;
 
 @Getter
 @Setter
@@ -17,7 +20,12 @@ public class UserContext {
     private Double currentLng;
     private int radiusMinute;
 
-    private boolean walk;
+    /**
+     * 이동 수단 (WALK / TRANSIT / CAR).
+     * null 이면 RecommendationService 에서 trip.transportMode 를 자동 적용하고,
+     * 그것도 null 이면 WALK 로 폴백한다.
+     */
+    private TransportMode transportMode;
 
     private String selectedSpace;
     private String selectedType;
@@ -32,8 +40,23 @@ public class UserContext {
     private Double nextLat;
     private Double nextLng;
 
+    /**
+     * [기능 6 — 틈새 추천] 추천된 장소가 이 시각에 영업 중이어야 함.
+     * null 이면 영업시간 검사 비활성 (기존 SOS / 날씨 알림에서는 null 로 두면 됨).
+     */
+    private LocalDateTime mustBeOpenAt;
+
     /** RecommendationService에서 사용하는 카테고리 조회 편의 메서드 */
     public String getRequestedCategory() {
         return this.selectedType;
+    }
+
+    /**
+     * 이동 수단 기반 분당 km 속도.
+     * transportMode 가 없으면 WALK(0.08 km/min) 로 폴백.
+     */
+    public double getSpeedKmPerMin() {
+        TransportMode m = (transportMode != null) ? transportMode : TransportMode.WALK;
+        return m.getKmPerMin();
     }
 }

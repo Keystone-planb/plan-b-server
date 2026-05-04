@@ -1,5 +1,6 @@
 package com.planb.planb_backend.domain.recommendation.dto;
 
+import com.planb.planb_backend.domain.trip.entity.TransportMode;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 
@@ -18,7 +19,13 @@ public class RecommendRequest {
 
     /** 이동 조건 */
     private int radiusMinute;
-    private boolean walk;                      // true=도보(80m/분), false=차량(400m/분)
+
+    /**
+     * 이동 수단 (WALK / TRANSIT / CAR).
+     * 미설정 시 서버가 trip.transportMode 를 자동 사용하고,
+     * 그것도 없으면 WALK 로 폴백.
+     */
+    private TransportMode transportMode;
 
     /** 장소 필터 */
     private String selectedSpace;             // INDOOR / OUTDOOR / MIX

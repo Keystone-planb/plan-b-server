@@ -5,8 +5,11 @@ import com.planb.planb_backend.domain.place.entity.BusinessStatus;
 import com.planb.planb_backend.domain.place.entity.Place;
 import com.planb.planb_backend.domain.place.repository.PlaceRepository;
 import com.planb.planb_backend.domain.trip.entity.PlaceType;
+import com.planb.planb_backend.domain.trip.entity.TransportMode;
+import com.planb.planb_backend.domain.trip.entity.Trip;
 import com.planb.planb_backend.domain.trip.entity.TripPlace;
 import com.planb.planb_backend.domain.trip.repository.TripPlaceRepository;
+import com.planb.planb_backend.domain.trip.repository.TripRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -50,9 +53,11 @@ public class RecommendationService {
     private final GooglePlaceApiService googlePlaceApiService;
     private final PlaceRepository placeRepository;
     private final TripPlaceRepository tripPlaceRepository;
+    private final TripRepository tripRepository;
     private final ScoringStrategy scoringStrategy;
     private final PlaceAnalysisService placeAnalysisService;
     private final CongestionService congestionService;
+    private final OpeningHoursService openingHoursService;
 
     // @RequiredArgsConstructor는 final 필드만 처리하므로 @Qualifier 주입은 별도 field injection 사용
     @Autowired
@@ -71,16 +76,17 @@ public class RecommendationService {
 
     public List<Place> getRecommendations(UserContext context) {
 
+        // [STEP 0] 이동 수단 자동 상속 — context 에 명시 없으면 trip.transportMode 사용
+        resolveTransportMode(context);
+
         // [STEP 1] 다음 일정 자동 추적 (동선 가중치용)
         if (context.isConsiderNextPlan() && context.getNextLat() == null && context.getTripId() != null) {
             resolveNextDestination(context);
         }
 
-        // [STEP 2] 검색 반경 계산
-        int radiusMeters = context.isWalk()
-                ? context.getRadiusMinute() * 80
-                : context.getRadiusMinute() * 400;
-        log.info("[STEP 2] 검색 반경: {}m (도보: {})", radiusMeters, context.isWalk());
+        // [STEP 2] 검색 반경 계산 (이동 수단 반영)
+        int radiusMeters = (int) Math.round(context.getSpeedKmPerMin() * 1000 * context.getRadiusMinute());
+        log.info("[STEP 2] 검색 반경: {}m (mode={})", radiusMeters, context.getTransportMode());
 
         // [STEP 2.5] 이번 여행 중복 제외 목록 수집
         Set<String> excludedIds = collectExcludedPlaceIds(context);
@@ -118,8 +124,13 @@ public class RecommendationService {
         // [STEP 6.5] AI 2차 검열 (keepOriginalCategory=false 일 때)
         List<Place> afterAiFilter = applyAiCategoryFilter(analyzed, context);
 
+        // [STEP 6.6] 영업시간 필터 (틈새 추천 mustBeOpenAt 가 설정된 경우)
+        List<Place> openNow = afterAiFilter.stream()
+                .filter(p -> passesOpeningHoursFilter(p, context))
+                .collect(Collectors.toList());
+
         // [STEP 7] 최종 EllipticalBonus 스코어링 → 상위 5개 선발
-        List<Place> top5 = afterAiFilter.stream()
+        List<Place> top5 = openNow.stream()
                 .sorted((p1, p2) -> Double.compare(
                         scoringStrategy.calculateScore(p2, context),
                         scoringStrategy.calculateScore(p1, context)))
@@ -491,16 +502,17 @@ public class RecommendationService {
                         "total", FINAL_TOP_N
                 ));
 
+                // [S1.5] 이동 수단 자동 상속
+                resolveTransportMode(context);
+
                 // [S2] 다음 목적지 자동 추적
                 if (context.isConsiderNextPlan() && context.getNextLat() == null
                         && context.getTripId() != null) {
                     resolveNextDestination(context);
                 }
 
-                // [S3] 검색 반경 계산
-                int radiusMeters = context.isWalk()
-                        ? context.getRadiusMinute() * 80
-                        : context.getRadiusMinute() * 400;
+                // [S3] 검색 반경 계산 (이동 수단 반영)
+                int radiusMeters = (int) Math.round(context.getSpeedKmPerMin() * 1000 * context.getRadiusMinute());
 
                 // [S4] 중복 제외 목록
                 Set<String> excludedIds = collectExcludedPlaceIds(context);
@@ -531,6 +543,12 @@ public class RecommendationService {
                                     // AI 2차 검열 (단일 장소)
                                     if (!passesAiCategoryFilter(analyzed, context)) {
                                         log.info("[SSE-탈락] AI 카테고리 불일치: {}", analyzed.getName());
+                                        return;
+                                    }
+
+                                    // [기능 6 — 틈새 추천] 영업시간 필터
+                                    if (!passesOpeningHoursFilter(analyzed, context)) {
+                                        log.info("[SSE-탈락] 영업시간 불일치: {}", analyzed.getName());
                                         return;
                                     }
 
@@ -581,6 +599,31 @@ public class RecommendationService {
         PlaceType aiType = place.getType();
         if (aiType == null) return true; // 미분석 장소는 통과
         return aiType.name().equalsIgnoreCase(requested);
+    }
+
+    /**
+     * [기능 6 — 틈새 추천] 단일 장소 영업시간 필터
+     * mustBeOpenAt 이 null 이면 항상 통과 (기존 SOS/날씨 알림에서는 null 로 두면 됨).
+     */
+    private boolean passesOpeningHoursFilter(Place place, UserContext context) {
+        if (context.getMustBeOpenAt() == null) return true;
+        return openingHoursService.isOpenAt(place.getOpeningHours(), context.getMustBeOpenAt());
+    }
+
+    /**
+     * 이동 수단 자동 상속.
+     * context 에 transportMode 가 없으면 trip.transportMode 로 채운다. 그것도 없으면 WALK.
+     */
+    private void resolveTransportMode(UserContext context) {
+        if (context.getTransportMode() != null) return;
+        if (context.getTripId() == null) return;
+        tripRepository.findById(context.getTripId())
+                .map(Trip::getTransportMode)
+                .ifPresent(mode -> {
+                    context.setTransportMode(mode);
+                    log.info("[ModeResolve] tripId={} 의 transportMode={} 자동 적용",
+                            context.getTripId(), mode);
+                });
     }
 
     /**

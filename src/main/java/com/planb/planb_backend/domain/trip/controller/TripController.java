@@ -1,6 +1,7 @@
 package com.planb.planb_backend.domain.trip.controller;
 
 import com.planb.planb_backend.domain.trip.dto.*;
+import com.planb.planb_backend.domain.trip.entity.TransportMode;
 import com.planb.planb_backend.domain.trip.service.TripService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
@@ -79,5 +80,23 @@ public class TripController {
             Authentication authentication) {
         return ResponseEntity.status(HttpStatus.CREATED)
                 .body(tripService.addLocation(authentication.getName(), id, day, request));
+    }
+
+    @Operation(summary = "이동 수단 조회", description = "여행의 주 이동 수단을 조회합니다. (WALK / TRANSIT / CAR)")
+    @GetMapping("/{id}/transport-mode")
+    public ResponseEntity<TransportMode> getTransportMode(
+            @PathVariable Long id,
+            Authentication authentication) {
+        return ResponseEntity.ok(tripService.getTransportMode(authentication.getName(), id));
+    }
+
+    @Operation(summary = "이동 수단 수정", description = "여행의 주 이동 수단을 변경합니다. 변경 후 모든 추천에 자동 적용됩니다.")
+    @PatchMapping("/{id}/transport-mode")
+    public ResponseEntity<Void> updateTransportMode(
+            @PathVariable Long id,
+            @RequestParam TransportMode mode,
+            Authentication authentication) {
+        tripService.updateTransportMode(authentication.getName(), id, mode);
+        return ResponseEntity.noContent().build();
     }
 }

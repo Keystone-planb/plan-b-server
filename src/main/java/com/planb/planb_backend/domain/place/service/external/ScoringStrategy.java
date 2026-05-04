@@ -44,11 +44,11 @@ public class ScoringStrategy {
             }
         }
 
-        // 3. 거리 페널티 (isWalk 반영)
+        // 3. 거리 페널티 (이동 수단 반영)
         double distanceKm = calculateHaversine(context.getCurrentLat(), context.getCurrentLng(),
                 candidate.getLatitude(), candidate.getLongitude());
 
-        double speedKmPerMin = context.isWalk() ? 0.08 : 0.4;
+        double speedKmPerMin = context.getSpeedKmPerMin();
         double userRadiusKm = context.getRadiusMinute() * speedKmPerMin;
 
         double distancePenalty = 1.0;

@@ -55,6 +55,15 @@ public class Trip {
     @Builder.Default
     private List<Itinerary> itineraries = new ArrayList<>();
 
+    /**
+     * 이 여행의 주 이동 수단.
+     * 여행 시작 시 한 번만 입력받으면 이 trip 안의 모든 추천이 자동으로 이 값을 사용한다.
+     * null 이면 RecommendationService / GapDetectionService 에서 WALK 로 폴백.
+     */
+    @Enumerated(EnumType.STRING)
+    @Column(name = "transport_mode", length = 20)
+    private TransportMode transportMode;
+
     @CreatedDate
     @Column(name = "created_at", updatable = false)
     private LocalDateTime createdAt;
@@ -72,5 +81,9 @@ public class Trip {
             this.travelStyles.clear();
             this.travelStyles.addAll(travelStyles);
         }
+    }
+
+    public void updateTransportMode(TransportMode mode) {
+        this.transportMode = mode;
     }
 }
