@@ -16,6 +16,7 @@ import java.time.Duration;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.LocalTime;
+import java.util.Map;
 
 import org.springframework.stereotype.Service;
 
@@ -38,6 +39,7 @@ public class GapRecommendationService {
     private final PlaceRepository placeRepository;
     private final RecommendationService recommendationService;
     private final GapDetectionService gapDetectionService;
+    private final GooglePlaceApiService googlePlaceApiService;
 
     /**
      * SSE 스트리밍 방식 틈새 추천.
@@ -65,9 +67,9 @@ public class GapRecommendationService {
             throw new IllegalArgumentException("tripId 가 일정의 trip 과 일치하지 않습니다.");
         }
 
-        // 장소 좌표 조회
-        Place bPlace = placeRepository.findByGooglePlaceId(before.getPlaceId()).orElse(null);
-        Place aPlace = placeRepository.findByGooglePlaceId(after.getPlaceId()).orElse(null);
+        // 장소 좌표 조회 (DB 미존재 시 Google API 폴백)
+        Place bPlace = resolvePlace(before.getPlaceId());
+        Place aPlace = resolvePlace(after.getPlaceId());
 
         if (bPlace == null || bPlace.getLatitude() == null || bPlace.getLongitude() == null) {
             throw new IllegalStateException("이전 일정에 좌표가 없어 틈새 추천을 생성할 수 없습니다.");
@@ -134,6 +136,39 @@ public class GapRecommendationService {
      */
     private TransportMode resolveMode(GapRecommendationRequest req, Long tripId) {
         return req.getTransportMode(); // null 이면 RecommendationService 가 trip 에서 자동 상속
+    }
+
+    /**
+     * 장소 좌표 조회: DB 우선, 없으면 Google Place Details API 폴백.
+     * Google API도 실패하면 null 반환.
+     */
+    private Place resolvePlace(String googlePlaceId) {
+        if (googlePlaceId == null || googlePlaceId.isBlank()) return null;
+
+        Place found = placeRepository.findByGooglePlaceId(googlePlaceId).orElse(null);
+        if (found != null && found.getLatitude() != null) return found;
+
+        // Google API 폴백
+        Map<String, Object> details = googlePlaceApiService.getGooglePlaceDetails(googlePlaceId);
+        if (details.isEmpty()) return null;
+
+        try {
+            @SuppressWarnings("unchecked")
+            Map<String, Object> geometry = (Map<String, Object>) details.get("geometry");
+            @SuppressWarnings("unchecked")
+            Map<String, Object> location = (Map<String, Object>) geometry.get("location");
+            double lat = ((Number) location.get("lat")).doubleValue();
+            double lng = ((Number) location.get("lng")).doubleValue();
+
+            Place stub = new Place();
+            stub.setLatitude(lat);
+            stub.setLongitude(lng);
+            log.info("[GapRecommendation] Google API 폴백 좌표 조회 성공: {} → ({}, {})", googlePlaceId, lat, lng);
+            return stub;
+        } catch (Exception e) {
+            log.warn("[GapRecommendation] Google API 폴백 좌표 파싱 실패: {}", googlePlaceId);
+            return null;
+        }
     }
 
     private LocalDateTime resolveEndTime(TripPlace tp, LocalDate date) {
