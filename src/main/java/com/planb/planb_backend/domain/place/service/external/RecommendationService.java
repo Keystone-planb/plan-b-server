@@ -11,8 +11,11 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Qualifier;
+import org.springframework.http.MediaType;
 import org.springframework.stereotype.Service;
+import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
+import java.io.IOException;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.LocalTime;
@@ -22,6 +25,8 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.Executor;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
+import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.stream.Collectors;
 
 /**
@@ -435,6 +440,170 @@ public class RecommendationService {
             }
         }
         log.info("[다음 목적지 탐색] 조건 맞는 일정 없음 — 동선 보너스 비활성화");
+    }
+
+    // ═══════════════════════════════════════════════════════
+    //  SSE 스트리밍 추천 (신규)
+    // ═══════════════════════════════════════════════════════
+
+    /**
+     * 대안 장소 추천 — SSE 스트리밍 버전
+     *
+     * [이벤트 흐름]
+     * 1) progress 이벤트: 연결 즉시 전송 → 프론트 스켈레톤 UI 렌더링 트리거
+     * 2) place 이벤트: 병렬 분석 완료 순서대로 1개씩 push (최대 5개)
+     * 3) done 이벤트: 전체 완료 신호 → 프론트 연결 종료
+     *
+     * [동시성 처리]
+     * - AtomicBoolean(done): emitter 이미 종료된 경우 추가 send 차단
+     * - AtomicInteger(emittedCount): 5개 초과 전송 방지 (CAS 기반 원자 증가)
+     * - send() 실패(IOException/IllegalStateException) 시 completeWithError 호출
+     */
+    public SseEmitter streamRecommendations(UserContext context) {
+        SseEmitter emitter = new SseEmitter(60_000L); // 60초 타임아웃
+        doStreamAsync(context, emitter);
+        return emitter;
+    }
+
+    /**
+     * SSE 파이프라인 실행 — 테스트 가능하도록 분리된 package-private 메서드
+     * emitter에 진행 상황을 progress → place(×N) → done 순으로 전송한다.
+     */
+    void doStreamAsync(UserContext context, SseEmitter emitter) {
+        AtomicBoolean done = new AtomicBoolean(false);
+
+        emitter.onTimeout(() -> {
+            log.warn("[SSE] 연결 타임아웃");
+            done.set(true);
+        });
+        emitter.onCompletion(() -> done.set(true));
+        emitter.onError(ex -> {
+            log.warn("[SSE] 연결 오류: {}", ex.getMessage());
+            done.set(true);
+        });
+
+        // 전체 파이프라인을 비동기 실행 → 컨트롤러가 즉시 SseEmitter 반환 가능
+        CompletableFuture.runAsync(() -> {
+            try {
+                // [S1] 스켈레톤 UI 트리거용 progress 이벤트 즉시 전송
+                sendSse(emitter, done, "progress", Map.of(
+                        "message", "AI가 주변 장소를 분석 중입니다...",
+                        "total", FINAL_TOP_N
+                ));
+
+                // [S2] 다음 목적지 자동 추적
+                if (context.isConsiderNextPlan() && context.getNextLat() == null
+                        && context.getTripId() != null) {
+                    resolveNextDestination(context);
+                }
+
+                // [S3] 검색 반경 계산
+                int radiusMeters = context.isWalk()
+                        ? context.getRadiusMinute() * 80
+                        : context.getRadiusMinute() * 400;
+
+                // [S4] 중복 제외 목록
+                Set<String> excludedIds = collectExcludedPlaceIds(context);
+
+                // [S5] Google Nearby Search
+                List<Map<String, Object>> googleResults = googlePlaceApiService.searchNearbyPlaces(
+                        context.getCurrentLat(), context.getCurrentLng(),
+                        radiusMeters, context.getRequestedCategory()
+                );
+
+                // [S6] DB Upsert
+                List<Place> allCandidates = upsertCandidates(googleResults, excludedIds);
+
+                // [S7] 1차 퍼널 필터링 → 상위 7개
+                List<Place> top7 = applyFunnelFilter(allCandidates, context);
+                log.info("[SSE] 퍼널 선발 {}개 → 병렬 분석 시작", top7.size());
+
+                // [S8] 병렬 분석 — 완료된 장소부터 즉시 emit
+                AtomicInteger emittedCount = new AtomicInteger(0);
+
+                List<CompletableFuture<Void>> futures = top7.stream()
+                        .map(place -> CompletableFuture
+                                .supplyAsync(() -> analyzeOnce(place), analysisExecutor)
+                                .thenAccept(analyzed -> {
+                                    if (done.get()) return;
+                                    if (emittedCount.get() >= FINAL_TOP_N) return;
+
+                                    // AI 2차 검열 (단일 장소)
+                                    if (!passesAiCategoryFilter(analyzed, context)) {
+                                        log.info("[SSE-탈락] AI 카테고리 불일치: {}", analyzed.getName());
+                                        return;
+                                    }
+
+                                    // 원자적 증가 — 정확히 FINAL_TOP_N개만 전송
+                                    int idx = emittedCount.incrementAndGet();
+                                    if (idx <= FINAL_TOP_N) {
+                                        log.info("[SSE] place 이벤트 전송 ({}/{}): {}",
+                                                idx, FINAL_TOP_N, analyzed.getName());
+                                        sendSse(emitter, done, "place",
+                                                com.planb.planb_backend.domain.recommendation.dto.PlaceResult.from(analyzed));
+                                    }
+                                })
+                                .exceptionally(ex -> {
+                                    log.warn("[SSE] 단일 장소 분석 실패: {}", ex.getMessage());
+                                    return null;
+                                }))
+                        .collect(Collectors.toList());
+
+                // 전체 완료 대기 (타임아웃 초과 시 완료된 결과만 사용)
+                try {
+                    CompletableFuture.allOf(futures.toArray(new CompletableFuture[0]))
+                            .get(ANALYSIS_TIMEOUT_SEC, TimeUnit.SECONDS);
+                } catch (TimeoutException e) {
+                    log.warn("[SSE] 전체 분석 타임아웃 — 완료된 결과만 전송");
+                } catch (InterruptedException e) {
+                    Thread.currentThread().interrupt();
+                }
+
+                // [S9] done 이벤트 전송 및 연결 종료
+                sendSse(emitter, done, "done", "[DONE]");
+                if (!done.get()) emitter.complete();
+
+            } catch (Exception e) {
+                log.error("[SSE] 스트리밍 처리 오류: {}", e.getMessage());
+                if (!done.get()) emitter.completeWithError(e);
+            }
+        }, analysisExecutor);
+    }
+
+    /**
+     * 단일 장소 AI 카테고리 검열
+     * applyAiCategoryFilter() 의 단일 장소 버전 — SSE 스트리밍에서 사용
+     */
+    private boolean passesAiCategoryFilter(Place place, UserContext context) {
+        if (context.isKeepOriginalCategory()) return true;
+        String requested = context.getRequestedCategory();
+        if (requested == null || requested.isBlank()) return true;
+        PlaceType aiType = place.getType();
+        if (aiType == null) return true; // 미분석 장소는 통과
+        return aiType.name().equalsIgnoreCase(requested);
+    }
+
+    /**
+     * SSE 이벤트 전송 헬퍼
+     * - String 데이터 → text/plain (done 이벤트의 "[DONE]" 등)
+     * - 그 외 객체 → application/json (progress, place 이벤트)
+     * - IOException / IllegalStateException 발생 시 completeWithError 호출
+     */
+    private void sendSse(SseEmitter emitter, AtomicBoolean done, String eventName, Object data) {
+        if (done.get()) return;
+        try {
+            SseEmitter.SseEventBuilder builder = SseEmitter.event().name(eventName);
+            if (data instanceof String) {
+                builder.data(data, MediaType.TEXT_PLAIN);
+            } else {
+                builder.data(data, MediaType.APPLICATION_JSON);
+            }
+            emitter.send(builder);
+        } catch (IOException | IllegalStateException e) {
+            log.warn("[SSE] 이벤트 전송 실패 (event={}): {}", eventName, e.getMessage());
+            done.set(true);
+            emitter.completeWithError(e);
+        }
     }
 
     /**
