@@ -73,11 +73,11 @@ public class NotificationController {
     }
 
     /**
-     * POST /api/notifications/trigger-weather-check
-     * 날씨 스케줄러 수동 실행 (테스트용)
+     * POST /api/notifications/actions/trigger-weather-check
+     * 날씨 스케줄러 수동 실행 (테스트용) — /{userId} 패턴과 충돌 방지를 위해 actions/ 접두사 사용
      */
     @Operation(summary = "[테스트] 날씨 스케줄러 수동 실행", description = "날씨 알림 스케줄러를 즉시 실행합니다.")
-    @PostMapping("/trigger-weather-check")
+    @PostMapping("/actions/trigger-weather-check")
     public ResponseEntity<String> triggerWeatherCheck() {
         weatherScheduler.checkWeatherAndNotify();
         return ResponseEntity.ok("날씨 스케줄러 실행 완료");

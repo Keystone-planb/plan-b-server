@@ -1,16 +1,21 @@
 ### ============================================================
 ###  PLAN B — 베타테스트 시나리오 (IntelliJ HTTP Client)
-###  실행 순서: ① 로그인 먼저 → 토큰 복사 → 나머지 순서대로
+###  실행 순서: 위에서 아래로 순서대로 실행
+###  ★ 각 요청 실행 후 응답을 캡쳐하세요
 ### ============================================================
 
 @base = https://api-dev.planb-travel.cloud
 
 
 ### ============================================================
-###  [사전 준비] 로그인
+###  [STEP 0] 로그인 — 반드시 가장 먼저 실행
+###  ✅ 체크: access_token 값이 응답에 있는지 확인
 ### ============================================================
 
-### 로그인 → 실행하면 token 자동 저장됨
+
+
+
+
 POST {{base}}/api/auth/login
 Content-Type: application/json
 
@@ -19,7 +24,177 @@ Content-Type: application/json
   "password": "myPassword123!"
 }
 
-> {% client.global.set("token", response.body.access_token) %}
+> {%
+  client.global.set("token", response.body.access_token);
+  client.log(" 토큰 저장 완료: " + response.body.access_token);
+%}
+
+
+### ============================================================
+###  [STEP 1] 여행 생성 — 서울 덕수궁 여행 (5/6 ~ 5/8)
+###  ✅ 체크: 201 Created, tripId 반환 확인
+### ============================================================
+
+POST {{base}}/api/trips
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "title": "서울 덕수궁 여행 (2차 베타)",
+  "startDate": "2026-05-06",
+  "endDate": "2026-05-08",
+  "travelStyles": ["CLASSIC", "HEALING"]
+}
+
+> {%
+  client.global.set("tripId", response.body.id);
+  client.log("✅ 여행 생성 완료. tripId=" + response.body.id);
+%}
+
+
+### ============================================================
+###  [STEP 2] 일정 추가 — 2일차(5/7) 14:00 덕수궁 (OUTDOOR)
+###  ✅ 체크: 201 Created, tripPlaceId(planId) 반환 확인
+###
+###  place_id: 덕수궁 Google Place ID
+###  (Google Maps에서 '덕수궁' 검색 → URL에서 place_id 확인)
+### ============================================================
+
+
+
+
+POST {{base}}/api/trips/27/days/2/locations
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "place_id": "ChIJMcWZMY2ifDUR2NLv8F3Togc",
+  "name": "덕수궁",
+  "visitTime": "14:00",
+  "endTime": "16:00",
+  "memo": "고궁 산책 (야외)"
+}
+
+> {%
+  client.global.set("planId", response.body.tripPlaceId);
+  client.log("✅ 일정 추가 완료. planId=" + response.body.tripPlaceId);
+%}
+
+
+### ============================================================
+###  [STEP 3] 날씨 스케줄러 수동 트리거
+###  ✅ 체크: 200 OK "날씨 스케줄러 실행 완료"
+###  ✅ 체크: 덕수궁 일정이 POP ≥ 70% 조건 충족 시 알림 자동 생성
+###
+###  ⚠️  알림이 생성되지 않는 경우:
+###     - 덕수궁 place가 DB에 없거나 좌표가 없는 경우
+###     - 방문 시각(14:00)이 현재 기준 24시간 밖에 있는 경우
+###     - 실제 강수확률이 70% 미만인 경우
+###  → Step 3-B(직접 알림 삽입)로 대체 가능
+### ============================================================
+
+POST {{base}}/api/notifications/actions/trigger-weather-check
+Authorization: Bearer {{token}}
+
+
+### ============================================================
+###  [STEP 4] 미확인 알림 조회
+###  ✅ [Assert 1] 덕수궁 관련 우천 경고 알림이 목록에 포함되는지 확인
+###  ✅ [Assert 2] alternatives 배열에 실내(INDOOR) 장소 1~3개 포함 확인
+###  ✅ [Assert 3] 각 대안 장소에 name, lat, lng 값이 있는지 확인
+###
+###  userId: 3 (dony615@naver.com 계정 고정 ID)
+### ============================================================
+
+GET {{base}}/api/notifications/3
+Authorization: Bearer {{token}}
+
+> {%
+  if (response.body.length > 0) {
+    var notification = response.body[0];
+    client.global.set("notificationId", notification.id);
+    client.global.set("newPlaceId", notification.alternatives[0].id);
+    client.log("✅ 알림 확인. notificationId=" + notification.id
+      + ", 대안 장소 수=" + notification.alternatives.length
+      + ", 첫 번째 대안=" + notification.alternatives[0].name);
+  } else {
+    client.log("⚠️ 알림 없음 — STEP 3-B 직접 삽입 필요");
+  }
+%}
+
+
+### ============================================================
+###  [STEP 5] 일정 교체 — 첫 번째 대안 장소로 덕수궁 교체
+###  ✅ [Assert] 200 OK "일정이 교체되었습니다" 메시지 확인
+###  ✅ [Assert] 교체 + 알림 읽음 + 취향 학습이 한 트랜잭션으로 처리
+###
+###  notificationId, newPlaceId 는 STEP 4 응답에서 자동 세팅됨
+###  (직접 지정하려면 아래 값을 숫자로 변경)
+### ============================================================
+
+POST {{base}}/api/notifications/{{notificationId}}/replace/{{newPlaceId}}
+Authorization: Bearer {{token}}
+
+
+### ============================================================
+###  [STEP 6] 취향 요약 조회 — 피드백 학습 반영 확인
+###  ✅ [Assert 1] 200 OK 확인
+###  ✅ [Assert 2] message 필드에 선택한 장소의 무드(CLASSIC / HEALING 등) 언급 확인
+###  ✅ [Assert 3] hasEnoughData 값 확인 (true/false)
+### ============================================================
+
+GET {{base}}/api/preferences/3/summary
+Authorization: Bearer {{token}}
+
+
+### ============================================================
+###  [STEP 7] 틈새 갭 목록 조회 — 추천 전 갭 확인
+###  ✅ 체크: 30분 이상 비는 시간 구간 확인 (beforePlanId, afterPlanId 확보)
+### ============================================================
+
+GET {{base}}/api/trips/{{tripId}}/gaps
+Authorization: Bearer {{token}}
+
+> {%
+  if (response.body.length > 0) {
+    var gap = response.body[0];
+    client.global.set("beforePlanId", gap.beforePlanId);
+    client.global.set("afterPlanId", gap.afterPlanId);
+    client.log("✅ 갭 확인. beforePlanId=" + gap.beforePlanId
+      + ", afterPlanId=" + gap.afterPlanId
+      + ", 가용시간=" + gap.availableMinutes + "분");
+  } else {
+    client.log("⚠️ 갭 없음 — 일정이 1개뿐이거나 모든 일정이 연속됨");
+  }
+%}
+
+
+### ============================================================
+###  [STEP 8] 틈새 추천 SSE — 개인화 가중치 반영 확인
+###  ✅ [Assert 1] SSE 이벤트: progress → place(×최대5) → done 순서 확인
+###  ✅ [Assert 2] place 이벤트 내 장소들이 STEP 5에서 학습한 무드
+###               (CLASSIC / HEALING) 를 가진 장소가 상위에 노출되는지 확인
+###
+###  ⚠️  IntelliJ는 SSE 스트리밍을 지원하나 한 번에 표시됨
+###     (응답 탭에서 전체 이벤트 목록 확인 가능)
+### ============================================================
+
+POST {{base}}/api/trips/{{tripId}}/gaps/recommend/stream
+Authorization: Bearer {{token}}
+Content-Type: application/json
+Accept: text/event-stream
+
+{
+  "beforePlanId": {{beforePlanId}},
+  "afterPlanId": {{afterPlanId}}
+}
+
+
+### ============================================================
+###  ─────────────────────────────────────────────────────────
+###  이하: 기존 1차 베타 시나리오 (참고용)
+###  ─────────────────────────────────────────────────────────
+### ============================================================
 
 
 ### ============================================================
@@ -61,19 +236,13 @@ Authorization: Bearer {{token}}
 
 ###
 
-### 2-2. 이동수단 변경 (WALK → TRANSIT → CAR 중 선택)
+### 2-2. 이동수단 변경
 PATCH {{base}}/api/trips/13/transport-mode?mode=WALK
-Authorization: Bearer {{token}}
-
-###
-
-### 2-3. 변경 확인
-GET {{base}}/api/trips/13/transport-mode
 Authorization: Bearer {{token}}
 
 
 ### ============================================================
-###  기능 3. 대안 추천 (PLAN B 핵심 기능)
+###  기능 3. 대안 추천
 ### ============================================================
 
 ### 3-1. 주변 장소 추천 — 부평역 근처 카페 (도보 10분)
@@ -95,24 +264,7 @@ Content-Type: application/json
 
 ###
 
-### 3-2. 주변 장소 추천 — 차량 이동, 다음 일정 방향 고려
-POST {{base}}/api/recommendations
-Authorization: Bearer {{token}}
-Content-Type: application/json
-
-{
-  "tripId": 13,
-  "currentLat": 37.4920,
-  "currentLng": 126.7240,
-  "radiusMinute": 15,
-  "transportMode": "CAR",
-  "keepOriginalCategory": false,
-  "considerNextPlan": true
-}
-
-###
-
-### 3-3. SSE 스트리밍 추천 (실시간)
+### 3-2. SSE 스트리밍 추천 (실시간)
 POST {{base}}/api/recommendations/stream
 Authorization: Bearer {{token}}
 Content-Type: application/json
@@ -130,44 +282,7 @@ Accept: text/event-stream
 
 
 ### ============================================================
-###  [2차 베타] 날씨 알림 & 개인화 학습 시나리오
-###  페르소나: 덕수궁 야외 일정 → 강수 80% → 실내 대안 선택 → 취향 학습
-### ============================================================
-
-### [2차-1] 날씨 알림 조회 — 덕수궁 우천 알림 + 실내 대안 3개 확인
-GET {{base}}/api/notifications/3
-Authorization: Bearer {{token}}
-
-###
-
-### [2차-2] 일정 교체 — 덕수궁 → 웨스틴 조선 서울 (INDOOR, placeId=147)
-###          교체 + 알림 읽음 + 취향 학습이 한 번에 처리됨
-POST {{base}}/api/notifications/3/replace/147
-Authorization: Bearer {{token}}
-
-###
-
-### [2차-3] 취향 요약 조회 — LOCAL 무드 선택 후 학습 반영 확인
-GET {{base}}/api/preferences/3/summary
-Authorization: Bearer {{token}}
-
-###
-
-### [2차-4] 틈새 추천 SSE — 개인화 가중치 반영 확인
-###          LOCAL 무드 장소가 상위권에 랭크되는지 검증
-POST {{base}}/api/trips/13/gaps/recommend/stream
-Authorization: Bearer {{token}}
-Content-Type: application/json
-Accept: text/event-stream
-
-{
-  "beforePlanId": 11,
-  "afterPlanId": 12
-}
-
-
-### ============================================================
-###  기능 4. 날씨 알림
+###  기능 4. 날씨 알림 (기존 고정 데이터)
 ### ============================================================
 
 ### 4-1. 미확인 날씨 알림 조회
@@ -207,13 +322,7 @@ Authorization: Bearer {{token}}
 
 ###
 
-### 6-2. 이동수단 지정해서 갭 재계산
-GET {{base}}/api/trips/13/gaps?mode=CAR
-Authorization: Bearer {{token}}
-
-###
-
-### 6-3. 틈새 추천 — SSE 스트리밍 (갭 사이 장소 실시간 추천)
+### 6-2. 틈새 추천 SSE 스트리밍
 POST {{base}}/api/trips/13/gaps/recommend/stream
 Authorization: Bearer {{token}}
 Content-Type: application/json
@@ -226,15 +335,13 @@ Accept: text/event-stream
 
 
 ### ============================================================
-###  장소 상세 조회 (추가 확인용)
+###  장소 상세 조회 (확인용)
 ### ============================================================
 
-### 장소 AI 요약 조회 (placeId는 추천 결과에서 확인)
 GET {{base}}/api/places/195/summary
 Authorization: Bearer {{token}}
 
 ###
 
-### 장소 상세 정보
 GET {{base}}/api/places/195
 Authorization: Bearer {{token}}
