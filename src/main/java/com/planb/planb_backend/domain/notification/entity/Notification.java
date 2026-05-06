@@ -47,6 +47,13 @@ public class Notification {
     @JdbcTypeCode(SqlTypes.JSON)
     private String alternativePlaceIds;
 
+    /** 원래 일정 장소 좌표 — 알림 조회 시 실시간 근처 탐색에 사용 */
+    @Column(name = "original_lat")
+    private Double originalLat;
+
+    @Column(name = "original_lng")
+    private Double originalLng;
+
     @Column(name = "is_read", nullable = false)
     private boolean isRead = false;
 

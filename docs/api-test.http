@@ -130,11 +130,48 @@ Accept: text/event-stream
 
 
 ### ============================================================
+###  [2차 베타] 날씨 알림 & 개인화 학습 시나리오
+###  페르소나: 덕수궁 야외 일정 → 강수 80% → 실내 대안 선택 → 취향 학습
+### ============================================================
+
+### [2차-1] 날씨 알림 조회 — 덕수궁 우천 알림 + 실내 대안 3개 확인
+GET {{base}}/api/notifications/3
+Authorization: Bearer {{token}}
+
+###
+
+### [2차-2] 일정 교체 — 덕수궁 → 웨스틴 조선 서울 (INDOOR, placeId=147)
+###          교체 + 알림 읽음 + 취향 학습이 한 번에 처리됨
+POST {{base}}/api/notifications/3/replace/147
+Authorization: Bearer {{token}}
+
+###
+
+### [2차-3] 취향 요약 조회 — LOCAL 무드 선택 후 학습 반영 확인
+GET {{base}}/api/preferences/3/summary
+Authorization: Bearer {{token}}
+
+###
+
+### [2차-4] 틈새 추천 SSE — 개인화 가중치 반영 확인
+###          LOCAL 무드 장소가 상위권에 랭크되는지 검증
+POST {{base}}/api/trips/13/gaps/recommend/stream
+Authorization: Bearer {{token}}
+Content-Type: application/json
+Accept: text/event-stream
+
+{
+  "beforePlanId": 11,
+  "afterPlanId": 12
+}
+
+
+### ============================================================
 ###  기능 4. 날씨 알림
 ### ============================================================
 
-### 4-1. 미확인 날씨 알림 조회 (userId=1 → 본인 ID로 변경)
-GET {{base}}/api/notifications/1
+### 4-1. 미확인 날씨 알림 조회
+GET {{base}}/api/notifications/3
 Authorization: Bearer {{token}}
 
 
@@ -142,21 +179,21 @@ Authorization: Bearer {{token}}
 ###  기능 5. 개인화 학습
 ### ============================================================
 
-### 5-1. 취향 요약 조회 (데이터 쌓이면 힐링/현지 등 분석 결과 표시)
-GET {{base}}/api/preferences/1/summary
+### 5-1. 취향 요약 조회
+GET {{base}}/api/preferences/3/summary
 Authorization: Bearer {{token}}
 
 ###
 
-### 5-2. 피드백 보내기 (추천 결과에서 장소 선택 시 호출)
+### 5-2. 피드백 직접 보내기
 POST {{base}}/api/preferences/feedback
 Authorization: Bearer {{token}}
 Content-Type: application/json
 
 {
-  "userId": 1,
-  "shownPlaceIds": [188, 195, 196],
-  "selectedPlaceId": 195
+  "userId": 3,
+  "shownPlaceIds": [100, 147, 29],
+  "selectedPlaceId": 147
 }
 
 

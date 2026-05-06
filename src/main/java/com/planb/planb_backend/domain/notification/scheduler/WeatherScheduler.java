@@ -108,18 +108,11 @@ public class WeatherScheduler {
         log.info("[WeatherScheduler] 알림 생성 대상 — planId={}, 장소={}, POP={}%",
                 planId, tp.getName(), pop);
 
-        // 대안 3개 탐색 (INDOOR 우선, 도보 제외)
-        List<Long> altIds = findIndoorAlternatives(originalPlace);
-        if (altIds.isEmpty()) {
-            log.info("[WeatherScheduler] 대안 없음 — 알림 미생성: planId={}", planId);
-            return;
-        }
-
-        // 알림 생성
-        Notification notification = buildNotification(tp, pop, altIds);
+        // 알림 생성 (대안은 조회 시점에 실시간 탐색)
+        Notification notification = buildNotification(tp, pop, originalPlace);
         notificationRepository.save(notification);
-        log.info("[WeatherScheduler] 알림 저장 완료 — planId={}, userId={}, 대안={}개",
-                planId, notification.getUserId(), altIds.size());
+        log.info("[WeatherScheduler] 알림 저장 완료 — planId={}, userId={}",
+                planId, notification.getUserId());
     }
 
     /**
@@ -174,15 +167,8 @@ public class WeatherScheduler {
         };
     }
 
-    private Notification buildNotification(TripPlace tp, int pop, List<Long> altIds) {
+    private Notification buildNotification(TripPlace tp, int pop, Place originalPlace) {
         Long userId = tp.getItinerary().getTrip().getUser().getId();
-
-        String altJson;
-        try {
-            altJson = objectMapper.writeValueAsString(altIds);
-        } catch (Exception e) {
-            altJson = "[]";
-        }
 
         Notification n = new Notification();
         n.setUserId(userId);
@@ -191,7 +177,9 @@ public class WeatherScheduler {
         n.setTitle("비가 올 예정이에요!");
         n.setBody(tp.getName() + " 방문 시간에 비가 올 것 같아요. 실내 대안 장소를 확인해보세요.");
         n.setPrecipitationProb(pop);
-        n.setAlternativePlaceIds(altJson);
+        n.setAlternativePlaceIds("[]");
+        n.setOriginalLat(originalPlace.getLatitude());
+        n.setOriginalLng(originalPlace.getLongitude());
         return n;
     }
 

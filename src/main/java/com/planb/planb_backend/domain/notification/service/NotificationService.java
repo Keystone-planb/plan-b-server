@@ -6,9 +6,12 @@ import com.planb.planb_backend.domain.notification.dto.AlternativePlaceDto;
 import com.planb.planb_backend.domain.notification.dto.NotificationResponse;
 import com.planb.planb_backend.domain.notification.entity.Notification;
 import com.planb.planb_backend.domain.notification.repository.NotificationRepository;
+import com.planb.planb_backend.domain.place.entity.BusinessStatus;
 import com.planb.planb_backend.domain.place.entity.Place;
 import com.planb.planb_backend.domain.place.repository.PlaceRepository;
+import com.planb.planb_backend.domain.place.service.external.GooglePlaceApiService;
 import com.planb.planb_backend.domain.preference.service.PreferenceService;
+import com.planb.planb_backend.domain.trip.entity.Space;
 import com.planb.planb_backend.domain.trip.entity.TripPlace;
 import com.planb.planb_backend.domain.trip.repository.TripPlaceRepository;
 import com.planb.planb_backend.domain.user.entity.User;
@@ -18,7 +21,9 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.stream.Collectors;
 
 @Slf4j
@@ -31,6 +36,10 @@ public class NotificationService {
     private final PlaceRepository        placeRepository;
     private final UserRepository         userRepository;
     private final PreferenceService      preferenceService;
+    private final GooglePlaceApiService  googlePlaceApiService;
+
+    private static final int NEARBY_RADIUS_METERS = 8_000;
+    private static final int MAX_ALTERNATIVES     = 3;
 
     private final ObjectMapper objectMapper = new ObjectMapper();
 
@@ -40,7 +49,10 @@ public class NotificationService {
 
     /**
      * 미확인 알림 + 대안 카드 목록 조회
+     * original_lat/lng 가 있으면 원래 장소 근처에서 실시간 INDOOR 탐색.
+     * 없으면 pre-stored alternative_place_ids fallback.
      */
+    @Transactional
     public List<NotificationResponse> getUnreadNotifications(Long userId) {
         return notificationRepository
                 .findByUserIdAndIsReadFalseOrderByCreatedAtDesc(userId)
@@ -50,12 +62,19 @@ public class NotificationService {
     }
 
     private NotificationResponse toResponse(Notification n) {
-        List<Long> altIds = parseAltIds(n.getAlternativePlaceIds());
-        List<AlternativePlaceDto> alternatives = altIds.stream()
-                .map(id -> placeRepository.findById(id).orElse(null))
-                .filter(java.util.Objects::nonNull)
-                .map(AlternativePlaceDto::from)
-                .collect(Collectors.toList());
+        List<AlternativePlaceDto> alternatives;
+
+        if (n.getOriginalLat() != null && n.getOriginalLng() != null) {
+            // 실시간 근처 탐색 — 원래 장소 좌표 기반
+            alternatives = fetchLiveAlternatives(n);
+        } else {
+            // fallback: pre-stored IDs
+            alternatives = parseAltIds(n.getAlternativePlaceIds()).stream()
+                    .map(id -> placeRepository.findById(id).orElse(null))
+                    .filter(java.util.Objects::nonNull)
+                    .map(AlternativePlaceDto::from)
+                    .collect(Collectors.toList());
+        }
 
         return NotificationResponse.builder()
                 .id(n.getId())
@@ -67,6 +86,62 @@ public class NotificationService {
                 .createdAt(n.getCreatedAt())
                 .alternatives(alternatives)
                 .build();
+    }
+
+    /**
+     * 원래 장소 좌표 근처 INDOOR 장소 실시간 탐색 후 DB upsert → 대안 카드 반환.
+     * 결과를 alternative_place_ids 에 캐시하여 replacePlan() 검증에서 재사용.
+     */
+    private List<AlternativePlaceDto> fetchLiveAlternatives(Notification n) {
+        List<Map<String, Object>> results = googlePlaceApiService.searchNearbyPlaces(
+                n.getOriginalLat(), n.getOriginalLng(), NEARBY_RADIUS_METERS, "cafe");
+
+        List<Long> altIds = new ArrayList<>();
+        List<AlternativePlaceDto> dtos = new ArrayList<>();
+
+        for (Map<String, Object> result : results) {
+            if (altIds.size() >= MAX_ALTERNATIVES) break;
+
+            String gId = (String) result.get("place_id");
+            if (gId == null) continue;
+
+            String bsRaw = (String) result.get("business_status");
+            if (bsRaw != null && !BusinessStatus.OPERATIONAL.name().equalsIgnoreCase(bsRaw)) continue;
+
+            Place place = placeRepository.findByGooglePlaceId(gId).orElseGet(() -> {
+                Place p = new Place();
+                p.setGooglePlaceId(gId);
+                p.setName((String) result.get("name"));
+                p.setSpace(Space.INDOOR);
+                try {
+                    @SuppressWarnings("unchecked")
+                    Map<String, Object> geometry = (Map<String, Object>) result.get("geometry");
+                    @SuppressWarnings("unchecked")
+                    Map<String, Object> location = geometry != null
+                            ? (Map<String, Object>) geometry.get("location") : null;
+                    Object lat = location != null ? location.get("lat") : null;
+                    Object lng = location != null ? location.get("lng") : null;
+                    if (lat != null) p.setLatitude(((Number) lat).doubleValue());
+                    if (lng != null) p.setLongitude(((Number) lng).doubleValue());
+                } catch (Exception ignored) { }
+                return placeRepository.save(p);
+            });
+
+            altIds.add(place.getId());
+            dtos.add(AlternativePlaceDto.from(place));
+        }
+
+        // replacePlan() 검증용으로 캐시
+        try {
+            n.setAlternativePlaceIds(objectMapper.writeValueAsString(altIds));
+            notificationRepository.save(n);
+        } catch (Exception e) {
+            log.warn("[Notification] altIds 캐시 저장 실패: {}", e.getMessage());
+        }
+
+        log.info("[Notification] 실시간 대안 탐색 완료 — notificationId={}, 좌표=({},{}), {}개",
+                n.getId(), n.getOriginalLat(), n.getOriginalLng(), dtos.size());
+        return dtos;
     }
 
     // ───────────────────────────────────────────
