@@ -96,7 +96,7 @@ public class RecommendationController {
         description = "분석이 완료된 장소부터 1개씩 실시간으로 push합니다. " +
                       "progress → place(×N) → done 순서로 이벤트가 전송됩니다."
     )
-    @PostMapping(value = "/recommendations/stream", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
+    @PostMapping(value = "/recommendations/stream", produces = "text/event-stream;charset=UTF-8")
     public SseEmitter streamRecommend(
             @RequestBody RecommendRequest request,
             Authentication authentication) {

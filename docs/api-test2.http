@@ -201,7 +201,7 @@ Authorization: Bearer {{token}}
 ###  ✅ [Assert] 응답 = "일정이 교체되었습니다. (planId=..., newPlaceId=...)"
 ### ================================================================
 
-POST {{base}}/api/notifications/{{notificationId}}/replace/{{newPlaceId}}
+POST {{base}}/api/notifications/{{notificationId}}/replace/217
 Authorization: Bearer {{token}}
 
 
@@ -225,78 +225,48 @@ Authorization: Bearer {{token}}
 
 
 ### ================================================================
-###  [STEP 7] 틈새 갭 목록 조회 — 추천 전 갭 확인
+###  [STEP 7] 대안 추천 SSE — 개인화 가중치 반영 최종 검증
 ###
-###  ✅ 체크: 200 OK
-###  ✅ 체크: 덕수궁(15:30)~창덕궁(16:30) 사이 갭 1개 확인
-###  ✅ 체크: availableMinutes > 0
-###
-###  응답 구조:
-###  [
-###    {
-###      "beforePlanId": 숫자,
-###      "afterPlanId": 숫자,
-###      "availableMinutes": 60,
-###      "gapStartTime": "15:30",
-###      "gapEndTime": "16:30"
-###    }
-###  ]
-### ================================================================
-
-GET {{base}}/api/trips/{{tripId}}/gaps
-Authorization: Bearer {{token}}
-
-> {%
-  if (response.body.length > 0) {
-    var gap = response.body[0];
-    client.global.set("beforePlanId", gap.beforePlanId);
-    client.global.set("afterPlanId", gap.afterPlanId);
-    client.log("✅ [STEP 7] 갭 확인!"
-      + "\n  beforePlanId=" + gap.beforePlanId
-      + "\n  afterPlanId=" + gap.afterPlanId
-      + "\n  가용시간=" + gap.availableMinutes + "분"
-    );
-  } else {
-    client.log("⚠️ [STEP 7] 갭 없음");
-  }
-%}
-
-
-### ================================================================
-###  [STEP 8] 틈새 추천 SSE — 개인화 가중치 반영 최종 검증
+###  STEP 5에서 대안 장소를 선택 → 무드 피드백 학습 완료.
+###  이제 같은 좌표(덕수궁 근처)로 대안 추천을 호출해
+###  학습된 무드(CLASSIC/HEALING) 장소가 상위에 노출되는지 확인.
 ###
 ###  ✅ [Assert 1] SSE 이벤트 순서: progress → place×N → done
-###  ✅ [Assert 2] STEP 5에서 학습된 무드 장소가 상위에 노출
-###               (개인화 가중치 최대 2.0배 적용)
+###  ✅ [Assert 2] place 이벤트의 mood 필드가 STEP 5에서 선택한
+###               무드(CLASSIC 또는 HEALING)와 일치하는 장소가 상위에 노출
+###               (개인화 가중치: 1 + score × 0.15, 최대 2.0배)
 ###
 ###  SSE 이벤트 구조:
 ###  event: progress
-###  data: {"message": "주변 장소를 탐색하고 있어요..."}
+###  data: {"message": "AI가 주변 장소를 분석 중입니다...", "total": 5}
 ###
 ###  event: place
 ###  data: {
-###    "placeId": "...",
-###    "name": "...",
-###    "category": "CAFE",
-###    "mood": "LOCAL",
-###    "score": 0.92,
-###    "reason": "로컬 분위기의 조용한 카페",
+###    "name": "장소명",
+###    "mood": "CLASSIC",      ← 학습된 무드가 상위에 노출되는지 확인
+###    "rating": 4.3,
+###    "address": "서울 중구...",
 ###    ...
 ###  }
 ###
 ###  event: done
-###  data: {"message": "완료"}
+###  data: "[DONE]"
 ###
 ###  ⚠️  IntelliJ: 스트리밍 완료 후 전체 응답이 한 번에 표시됨
-###     응답 탭에서 event: place 항목 순서대로 무드 확인
+###     응답 탭에서 event: place 항목의 mood 순서 확인
 ### ================================================================
 
-POST {{base}}/api/trips/{{tripId}}/gaps/recommend/stream
+POST {{base}}/api/recommendations/stream
 Authorization: Bearer {{token}}
 Content-Type: application/json
 Accept: text/event-stream
 
 {
-  "beforePlanId": {{beforePlanId}},
-  "afterPlanId": {{afterPlanId}}
+  "tripId": 29,
+  "currentLat": 37.5658,
+  "currentLng": 126.9749,
+  "radiusMinute": 15,
+  "transportMode": "WALK",
+  "keepOriginalCategory": false,
+  "considerNextPlan": false
 }
