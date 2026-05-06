@@ -114,18 +114,68 @@ public class NotificationService {
                 p.setName((String) result.get("name"));
                 p.setSpace(Space.INDOOR);
                 try {
+                    // 좌표
                     @SuppressWarnings("unchecked")
                     Map<String, Object> geometry = (Map<String, Object>) result.get("geometry");
                     @SuppressWarnings("unchecked")
                     Map<String, Object> location = geometry != null
                             ? (Map<String, Object>) geometry.get("location") : null;
-                    Object lat = location != null ? location.get("lat") : null;
-                    Object lng = location != null ? location.get("lng") : null;
-                    if (lat != null) p.setLatitude(((Number) lat).doubleValue());
-                    if (lng != null) p.setLongitude(((Number) lng).doubleValue());
+                    if (location != null) {
+                        Object lat = location.get("lat");
+                        Object lng = location.get("lng");
+                        if (lat != null) p.setLatitude(((Number) lat).doubleValue());
+                        if (lng != null) p.setLongitude(((Number) lng).doubleValue());
+                    }
+                    // 평점
+                    Object ratingObj = result.get("rating");
+                    if (ratingObj != null) p.setRating(((Number) ratingObj).doubleValue());
+                    // 평점 수
+                    Object totalObj = result.get("user_ratings_total");
+                    if (totalObj != null) p.setUserRatingsTotal(((Number) totalObj).intValue());
+                    // 주소 (vicinity)
+                    String vicinity = (String) result.get("vicinity");
+                    if (vicinity != null) p.setAddress(vicinity);
+                    // 카테고리 (types 첫 번째)
+                    @SuppressWarnings("unchecked")
+                    List<String> types = (List<String>) result.get("types");
+                    if (types != null && !types.isEmpty()) p.setCategory(types.get(0));
+                    // 사진 URL
+                    @SuppressWarnings("unchecked")
+                    List<Map<String, Object>> photos = (List<Map<String, Object>>) result.get("photos");
+                    if (photos != null && !photos.isEmpty()) {
+                        String ref = (String) photos.get(0).get("photo_reference");
+                        if (ref != null) p.setPhotoUrl(googlePlaceApiService.buildPhotoUrl(ref));
+                    }
                 } catch (Exception ignored) { }
                 return placeRepository.save(p);
             });
+
+            // 기존 장소에 누락된 필드가 있으면 업데이트
+            boolean updated = false;
+            try {
+                if (place.getRating() == null) {
+                    Object r = result.get("rating");
+                    if (r != null) { place.setRating(((Number) r).doubleValue()); updated = true; }
+                }
+                if (place.getAddress() == null) {
+                    String v = (String) result.get("vicinity");
+                    if (v != null) { place.setAddress(v); updated = true; }
+                }
+                if (place.getCategory() == null) {
+                    @SuppressWarnings("unchecked")
+                    List<String> t = (List<String>) result.get("types");
+                    if (t != null && !t.isEmpty()) { place.setCategory(t.get(0)); updated = true; }
+                }
+                if (place.getPhotoUrl() == null) {
+                    @SuppressWarnings("unchecked")
+                    List<Map<String, Object>> ph = (List<Map<String, Object>>) result.get("photos");
+                    if (ph != null && !ph.isEmpty()) {
+                        String ref = (String) ph.get(0).get("photo_reference");
+                        if (ref != null) { place.setPhotoUrl(googlePlaceApiService.buildPhotoUrl(ref)); updated = true; }
+                    }
+                }
+                if (updated) placeRepository.save(place);
+            } catch (Exception ignored) { }
 
             altIds.add(place.getId());
             dtos.add(AlternativePlaceDto.from(place));

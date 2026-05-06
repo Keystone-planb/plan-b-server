@@ -63,7 +63,7 @@ Content-Type: application/json
 
 
 
-POST {{base}}/api/trips/27/days/2/locations
+POST {{base}}/api/trips/28/days/2/locations
 Authorization: Bearer {{token}}
 Content-Type: application/json
 

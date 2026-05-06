@@ -115,6 +115,14 @@ public class GooglePlaceApiService {
         }
     }
 
+    /**
+     * Google Places Photo API URL 생성
+     */
+    public String buildPhotoUrl(String photoReference) {
+        return "https://maps.googleapis.com/maps/api/place/photo?maxwidth=400&photo_reference="
+                + photoReference + "&key=" + apiKey;
+    }
+
     /** PLAN B Enum → 구글 Places API type 변환 */
     private String mapToGoogleType(String category) {
         if (category == null) return "";
