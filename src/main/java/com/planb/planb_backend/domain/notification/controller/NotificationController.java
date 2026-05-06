@@ -1,6 +1,7 @@
 package com.planb.planb_backend.domain.notification.controller;
 
 import com.planb.planb_backend.domain.notification.dto.NotificationResponse;
+import com.planb.planb_backend.domain.notification.scheduler.WeatherScheduler;
 import com.planb.planb_backend.domain.notification.service.NotificationService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
@@ -18,6 +19,7 @@ import java.util.List;
 public class NotificationController {
 
     private final NotificationService notificationService;
+    private final WeatherScheduler weatherScheduler;
 
     /**
      * GET /api/notifications/{userId}
@@ -68,6 +70,17 @@ public class NotificationController {
         } catch (IllegalArgumentException e) {
             return ResponseEntity.badRequest().build();
         }
+    }
+
+    /**
+     * POST /api/notifications/trigger-weather-check
+     * 날씨 스케줄러 수동 실행 (테스트용)
+     */
+    @Operation(summary = "[테스트] 날씨 스케줄러 수동 실행", description = "날씨 알림 스케줄러를 즉시 실행합니다.")
+    @PostMapping("/trigger-weather-check")
+    public ResponseEntity<String> triggerWeatherCheck() {
+        weatherScheduler.checkWeatherAndNotify();
+        return ResponseEntity.ok("날씨 스케줄러 실행 완료");
     }
 
     /** 본인 확인 — userId와 로그인 사용자 이메일 불일치 시 403 */
