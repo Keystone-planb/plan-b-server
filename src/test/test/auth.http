@@ -78,4 +78,4 @@ Authorization: Bearer {{auth_token}}
 
 ### 8. 회원 탈퇴 (DELETE)
 DELETE http://localhost:8080/api/users/withdraw
-Authorization: Bearer {{auth_token}}
+Authorization: Bearer {{auth_token}}어디에

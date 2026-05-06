@@ -6,16 +6,39 @@
 
 ---
 
+## ⚠️ Breaking Change — `walk` → `transportMode` 교체
+
+> **대상 API**: `POST /api/recommendations`, `POST /api/recommendations/stream`
+
+기존의 `walk: boolean` 필드가 `transportMode: string` 으로 교체되었습니다.
+
+```json
+// 이전 (더 이상 동작하지 않음)
+{ "walk": false }
+
+// 이후 (이렇게 바꿔야 함)
+{ "transportMode": "CAR" }
+```
+
+| 값 | 이동속도 | 설명 |
+|----|---------|------|
+| `"WALK"` | 80m/분 | 도보 |
+| `"TRANSIT"` | 350m/분 | 대중교통 |
+| `"CAR"` | 500m/분 | 차량 |
+
+---
+
 ## 목차
 
 1. [인증 (Auth)](#1-인증)
 2. [사용자 (User)](#2-사용자)
 3. [여행 계획 (Trip)](#3-여행-계획)
-4. [대안 추천 — 핵심 (Recommendation)](#4-대안-추천--핵심)
-5. [날씨 알림 (Notification)](#5-날씨-알림)
-6. [개인화 학습 (Preference)](#6-개인화-학습)
-7. [장소 (Place)](#7-장소)
-8. [공통 Enum 정의](#8-공통-enum-정의)
+4. [대안 추천 (Recommendation)](#4-대안-추천)
+5. [🆕 틈새 추천 (Gap)](#5-틈새-추천)
+6. [날씨 알림 (Notification)](#6-날씨-알림)
+7. [개인화 학습 (Preference)](#7-개인화-학습)
+8. [장소 (Place)](#8-장소)
+9. [공통 Enum 정의](#9-공통-enum-정의)
 
 ---
 
@@ -225,26 +248,44 @@
 }
 ```
 
+### 🆕 GET /api/trips/{id}/transport-mode 🔒 — 이동수단 조회
+
+```json
+// Response 200
+"WALK"   // "WALK" | "TRANSIT" | "CAR" | null
+```
+
+### 🆕 PATCH /api/trips/{id}/transport-mode?mode={값} 🔒 — 이동수단 설정
+
+> 여행 전체 기본 이동수단을 설정합니다. 틈새 추천 및 대안 추천에서 자동 적용됩니다.
+
+```
+PATCH /api/trips/10/transport-mode?mode=TRANSIT
+
+// Response 204 No Content
+```
+
 ---
 
-## 4. 대안 추천 — 핵심
+## 4. 대안 추천
 
 > PLAN B의 핵심 기능. 현재 위치 기반으로 대안 장소를 AI 분석하여 추천합니다.
 
-### Request Body 공통 필드 (추천 API 전체 공유)
+### 🔄 Request Body 공통 필드
 
 | 필드 | 타입 | 필수 | 설명 |
 |------|------|------|------|
 | `tripId` | Long | 선택 | 같은 여행 내 중복 제외 + 다음 일정 자동 추적 |
 | `currentPlanId` | Long | 선택 | 현재 취소된 일정 ID |
-| `currentLat` | Double | 필수 | 현재 위도 |
-| `currentLng` | Double | 필수 | 현재 경도 |
-| `radiusMinute` | int | 필수 | 이동 허용 시간 (분) |
-| `walk` | boolean | 필수 | true=도보(80m/분), false=차량(400m/분) |
+| `currentLat` | Double | **필수** | 현재 위도 |
+| `currentLng` | Double | **필수** | 현재 경도 |
+| `radiusMinute` | int | **필수** | 이동 허용 시간 (분) |
+| ~~`walk`~~ | ~~boolean~~ | ~~필수~~ | **삭제됨** — `transportMode`로 교체 |
+| `transportMode` | String | 선택 | `"WALK"` / `"TRANSIT"` / `"CAR"` — null이면 trip 설정값 자동 적용, trip도 없으면 WALK |
 | `selectedSpace` | String | 선택 | `INDOOR` / `OUTDOOR` / `MIX` |
 | `selectedType` | String | 선택 | 장소 타입 (Enum 참고) |
-| `keepOriginalCategory` | boolean | 필수 | true=원본 카테고리 유지, false=AI 2차 검열 적용 |
-| `considerNextPlan` | boolean | 필수 | true=다음 목적지 방향 동선 최적화 |
+| `keepOriginalCategory` | boolean | 선택 | true=원본 카테고리 유지 (기본값: false) |
+| `considerNextPlan` | boolean | 선택 | true=다음 목적지 방향 동선 최적화 (기본값: false) |
 | `nextLat` | Double | 선택 | 다음 목적지 위도 (null이면 DB 자동 조회) |
 | `nextLng` | Double | 선택 | 다음 목적지 경도 |
 
@@ -278,7 +319,7 @@
 
 ---
 
-### POST /api/recommendations — 대안 장소 추천 (동기)
+### 🔄 POST /api/recommendations 🔒 — 대안 장소 추천 (동기)
 
 > 분석 완료 후 한 번에 최대 5개 반환. 평균 소요 시간 약 15~25초.
 
@@ -289,7 +330,7 @@
   "currentLat": 37.5665,
   "currentLng": 126.9780,
   "radiusMinute": 15,
-  "walk": false,
+  "transportMode": "WALK",
   "keepOriginalCategory": true,
   "considerNextPlan": false
 }
@@ -303,7 +344,7 @@
 
 ---
 
-### 🆕 POST /api/recommendations/stream — 대안 장소 추천 (SSE 실시간 스트리밍)
+### 🔄 POST /api/recommendations/stream 🔒 — 대안 장소 추천 (SSE 실시간 스트리밍)
 
 > 분석 완료된 장소부터 1개씩 실시간 push. 스켈레톤 UI와 함께 사용 권장.
 > **EventSource 사용 불가** — Authorization 헤더 전송이 안 되므로 **fetch API**로 구현해야 합니다.
@@ -328,7 +369,7 @@ const response = await fetch('https://api-dev.planb-travel.cloud/api/recommendat
     currentLat: 37.5665,
     currentLng: 126.9780,
     radiusMinute: 15,
-    walk: false,
+    transportMode: 'WALK',   // ← walk: false 에서 변경
     keepOriginalCategory: true,
     considerNextPlan: false
   })
@@ -404,7 +445,7 @@ while (true) {
   "memo": "우산 챙기기"
 }
 
-// Response 200 (AddLocationResponse 동일 형식)
+// Response 200
 {
   "tripPlaceId": 55,
   "name": "덕수궁",
@@ -416,10 +457,172 @@ while (true) {
 
 ---
 
-## 5. 날씨 알림
+## 5. 🆕 틈새 추천
+
+> 일정과 일정 사이 비어있는 시간(갭)을 감지하고, 그 시간에 들를 수 있는 장소를 추천합니다.
+
+### 갭이란?
+
+같은 날 연속한 두 일정 사이에 **30분 이상** 비는 시간을 갭이라고 합니다.
+이동 시간과 여유 시간(10분)을 제외한 **실제 활용 가능한 시간(availableMinutes)** 을 계산해서 알려줍니다.
+
+```
+갭 = A 일정 종료 ~ B 일정 시작 사이 시간
+availableMinutes = 갭 - 이동예상시간(직선거리/이동속도) - 여유시간(10분)
+```
+
+---
+
+### GET /api/trips/{tripId}/gaps 🔒 — 갭 목록 조회
+
+```
+GET /api/trips/10/gaps
+GET /api/trips/10/gaps?mode=CAR   // 이동수단 직접 지정
+```
+
+**Query Parameter**
+
+| 파라미터 | 타입 | 필수 | 설명 |
+|---------|------|------|------|
+| `mode` | String | 선택 | `WALK` / `TRANSIT` / `CAR` — 없으면 trip 설정값 자동 사용 |
+
+```json
+// Response 200
+[
+  {
+    "beforePlanId": 11,
+    "beforePlanTitle": "투썸플레이스 부평역점",
+    "beforePlanEndTime": "2026-07-03T11:00:00",
+    "beforePlaceLat": 37.4919,
+    "beforePlaceLng": 126.7245,
+    "afterPlanId": 12,
+    "afterPlanTitle": "스타벅스 부평역점",
+    "afterPlanStartTime": "2026-07-03T12:00:00",
+    "afterPlaceLat": 37.4951,
+    "afterPlaceLng": 126.7223,
+    "gapMinutes": 60,
+    "estimatedTravelMinutes": 5,
+    "availableMinutes": 45,
+    "transportMode": "WALK"
+  }
+]
+```
+
+| 필드 | 타입 | 설명 |
+|------|------|------|
+| `beforePlanId` | Long | 이전 일정 ID |
+| `beforePlanTitle` | String | 이전 일정 장소명 |
+| `beforePlanEndTime` | LocalDateTime | 이전 일정 종료 시각 |
+| `beforePlaceLat/Lng` | Double | 이전 일정 장소 좌표 (null 가능) |
+| `afterPlanId` | Long | 다음 일정 ID |
+| `afterPlanTitle` | String | 다음 일정 장소명 |
+| `afterPlanStartTime` | LocalDateTime | 다음 일정 시작 시각 |
+| `afterPlaceLat/Lng` | Double | 다음 일정 장소 좌표 (null 가능) |
+| `gapMinutes` | int | 두 일정 사이 총 여유 시간 (분) |
+| `estimatedTravelMinutes` | int | 직선거리 기준 이동 예상 시간 (분) |
+| `availableMinutes` | int | 실제 활용 가능한 시간 (분) |
+| `transportMode` | String | 계산에 사용된 이동수단 |
+
+---
+
+### POST /api/trips/{tripId}/gaps/recommend/stream 🔒 — 틈새 장소 추천 (SSE 스트리밍)
+
+> 갭 사이에 들를 수 있는 장소를 실시간으로 추천합니다.
+> 이전 일정 위치를 출발지로, 다음 일정 위치를 동선 최적화에 활용합니다.
+> **EventSource 사용 불가** — fetch API로 구현해야 합니다.
+
+**이벤트 흐름**
+```
+event:progress  → 분석 시작 알림
+event:place     → 추천 장소 1개씩 (최대 5개)
+event:done      → 완료
+```
+
+**Request Body**
+
+```json
+{
+  "beforePlanId": 11,
+  "afterPlanId": 12,
+  "transportMode": "WALK",
+  "radiusMinute": 10
+}
+```
+
+| 필드 | 타입 | 필수 | 설명 |
+|------|------|------|------|
+| `beforePlanId` | Long | **필수** | 갭의 이전 일정 ID (gaps 목록의 `beforePlanId`) |
+| `afterPlanId` | Long | **필수** | 갭의 다음 일정 ID (gaps 목록의 `afterPlanId`) |
+| `transportMode` | String | 선택 | 이동수단 직접 지정. null이면 trip 설정값 자동 사용 |
+| `radiusMinute` | int | 선택 | 검색 반경(분). null이면 가용시간의 1/3 자동 계산 (최소 5분) |
+
+**자동 계산되는 값 (요청에 포함 불필요)**
+
+| 항목 | 계산 방식 |
+|------|----------|
+| 출발 좌표 | 이전 일정(`beforePlanId`) 장소의 좌표 자동 조회 |
+| 도착 방향 | 다음 일정(`afterPlanId`) 장소 좌표로 동선 최적화 자동 적용 |
+| 영업시간 검사 시각 | 이전 일정 종료 + 이동시간의 절반 (실제 도착 예상 시각) |
+| 검색 반경 | `radiusMinute` 없으면 `max(5, availableMinutes / 3)` 자동 산출 |
+
+**Response — SSE 이벤트**
+
+이벤트 형식은 대안 추천(`/recommendations/stream`)과 동일합니다.
+
+| 이벤트 | data 형식 | 설명 |
+|--------|-----------|------|
+| `progress` | `{"message": "...", "total": 5}` | 분석 시작 |
+| `place` | PlaceResult JSON | 추천 장소 1개 |
+| `done` | `[DONE]` | 완료 |
+
+**프론트엔드 구현 예시**
+
+```javascript
+// 1. 먼저 갭 목록 조회
+const gaps = await fetch('/api/trips/10/gaps', {
+  headers: { 'Authorization': `Bearer ${token}` }
+}).then(r => r.json());
+
+// 2. 첫 번째 갭으로 추천 요청
+const gap = gaps[0];
+const response = await fetch(`/api/trips/10/gaps/recommend/stream`, {
+  method: 'POST',
+  headers: {
+    'Authorization': `Bearer ${token}`,
+    'Content-Type': 'application/json',
+    'Accept': 'text/event-stream'
+  },
+  body: JSON.stringify({
+    beforePlanId: gap.beforePlanId,
+    afterPlanId: gap.afterPlanId
+    // transportMode, radiusMinute 생략 시 자동 계산
+  })
+});
+
+const reader = response.body.getReader();
+const decoder = new TextDecoder();
+let eventName = '';
+
+while (true) {
+  const { done, value } = await reader.read();
+  if (done) break;
+  const lines = decoder.decode(value).split('\n');
+  for (const line of lines) {
+    if (line.startsWith('event:')) eventName = line.slice(6).trim();
+    if (line.startsWith('data:')) {
+      const data = line.slice(5).trim();
+      if (eventName === 'place') appendGapCard(JSON.parse(data));
+      if (eventName === 'done') hideLoading();
+    }
+  }
+}
+```
+
+---
+
+## 6. 날씨 알림
 
 > 날씨 스케줄러가 4시간마다 자동 실행되어 강수 확률 70% 이상인 야외 일정에 알림을 생성합니다.
-> 알림이 생성되면 아래 API로 조회·처리할 수 있습니다.
 
 ### GET /api/notifications/{userId} 🔒 — 미확인 알림 목록 조회
 
@@ -450,35 +653,24 @@ while (true) {
 
 ### POST /api/notifications/{notificationId}/replace/{newPlaceId} 🔒 — 대안으로 일정 교체
 
-> 알림의 대안 장소 중 하나를 선택해 일정을 교체합니다.
 > 교체 + 알림 읽음 처리 + 개인화 학습 피드백이 한 번에 처리됩니다.
 
 ```
 // Response 200
 "일정이 성공적으로 교체되었습니다."
-
-// Response 400 (대안 목록에 없는 placeId 요청 시)
-"해당 장소는 이 알림의 대안 목록에 없습니다."
 ```
 
 ### POST /api/notifications/{notificationId}/dismiss 🔒 — 알림 닫기
 
-> 일정 변경 없이 알림만 읽음 처리.
-
-```
-// Response 204 No Content
-```
+> Response 204 No Content
 
 ---
 
-## 6. 개인화 학습
+## 7. 개인화 학습
 
 > 사용자가 추천 결과에서 어떤 장소를 선택했는지 학습하여 이후 추천에 반영합니다.
-> 추천 결과 화면에서 장소 선택 시 자동으로 호출하세요.
 
 ### POST /api/preferences/feedback — 피드백 보고
-
-> 선택한 장소 mood +1.0, 노출됐지만 미선택 장소 mood -0.3 학습.
 
 ```json
 // Request
@@ -494,40 +686,28 @@ while (true) {
 ### GET /api/preferences/{userId}/summary — 취향 요약 조회
 
 ```json
-// Response 200 — 데이터 충분한 경우
+// Response 200
 {
   "userId": 3,
   "hasEnoughData": true,
   "message": "힐링 무드의 장소를 선호합니다."
 }
-
-// Response 200 — 데이터 부족한 경우
-{
-  "userId": 3,
-  "hasEnoughData": false,
-  "message": null
-}
 ```
 
 ---
 
-## 7. 장소
+## 8. 장소
 
 ### GET /api/places/search?query={검색어} — 장소 검색
 
 ```
 GET /api/places/search?query=광화문 스타벅스
-
-// Response 200
-{
-  "places": [ ... ]
-}
 ```
 
 ### GET /api/places/{placeId} — 장소 상세 정보
 
 ```json
-// Response 200 (PlaceDetailResponse)
+// Response 200
 {
   "placeId": 147,
   "googlePlaceId": "ChIJOU6v...",
@@ -565,7 +745,14 @@ GET /api/places/search?query=광화문 스타벅스
 
 ---
 
-## 8. 공통 Enum 정의
+## 9. 공통 Enum 정의
+
+### 🆕 TransportMode (이동수단)
+| 값 | 이동속도 | 설명 |
+|----|---------|------|
+| `WALK` | 80m/분 | 도보 |
+| `TRANSIT` | 350m/분 | 대중교통 |
+| `CAR` | 500m/분 | 차량 |
 
 ### Mood (여행 스타일 / 장소 분위기)
 | 값 | 설명 |
@@ -615,4 +802,4 @@ GET /api/places/search?query=광화문 스타벅스
 
 ---
 
-*최종 업데이트: 2026-05-04*
+*최종 업데이트: 2026-05-05*

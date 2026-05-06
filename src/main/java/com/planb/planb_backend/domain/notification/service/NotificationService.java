@@ -143,7 +143,7 @@ public class NotificationService {
         try {
             return objectMapper.readValue(json, new TypeReference<List<Long>>() {});
         } catch (Exception e) {
-            log.warn("[Notification] alternativePlaceIds 파싱 실패: {}", json);
+            log.warn("[Notification] alternativePlaceIds 파싱실패: {}", json);
             return List.of();
         }
     }

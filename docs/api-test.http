@@ -1,0 +1,203 @@
+### ============================================================
+###  PLAN B — 베타테스트 시나리오 (IntelliJ HTTP Client)
+###  실행 순서: ① 로그인 먼저 → 토큰 복사 → 나머지 순서대로
+### ============================================================
+
+@base = https://api-dev.planb-travel.cloud
+
+
+### ============================================================
+###  [사전 준비] 로그인
+### ============================================================
+
+### 로그인 → 실행하면 token 자동 저장됨
+POST {{base}}/api/auth/login
+Content-Type: application/json
+
+{
+  "email": "dony615@naver.com",
+  "password": "myPassword123!"
+}
+
+> {% client.global.set("token", response.body.access_token) %}
+
+
+### ============================================================
+###  기능 1. 여행 계획 생성 및 조회
+### ============================================================
+
+### 1-1. 여행 생성
+POST {{base}}/api/trips
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "title": "부평 당일치기",
+  "startDate": "2026-07-03",
+  "endDate": "2026-07-03",
+  "travelStyles": ["LOCAL", "HEALING"]
+}
+
+###
+
+### 1-2. 내 여행 목록 조회
+GET {{base}}/api/trips
+Authorization: Bearer {{token}}
+
+###
+
+### 1-3. 여행 상세 조회 (일정 전체)
+GET {{base}}/api/trips/13
+Authorization: Bearer {{token}}
+
+
+### ============================================================
+###  기능 2. 이동수단 설정
+### ============================================================
+
+### 2-1. 현재 이동수단 조회
+GET {{base}}/api/trips/13/transport-mode
+Authorization: Bearer {{token}}
+
+###
+
+### 2-2. 이동수단 변경 (WALK → TRANSIT → CAR 중 선택)
+PATCH {{base}}/api/trips/13/transport-mode?mode=WALK
+Authorization: Bearer {{token}}
+
+###
+
+### 2-3. 변경 확인
+GET {{base}}/api/trips/13/transport-mode
+Authorization: Bearer {{token}}
+
+
+### ============================================================
+###  기능 3. 대안 추천 (PLAN B 핵심 기능)
+### ============================================================
+
+### 3-1. 주변 장소 추천 — 부평역 근처 카페 (도보 10분)
+POST {{base}}/api/recommendations
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "tripId": 13,
+  "currentLat": 37.4920,
+  "currentLng": 126.7240,
+  "radiusMinute": 10,
+  "transportMode": "WALK",
+  "selectedType": "CAFE",
+  "selectedSpace": "INDOOR",
+  "keepOriginalCategory": false,
+  "considerNextPlan": false
+}
+
+###
+
+### 3-2. 주변 장소 추천 — 차량 이동, 다음 일정 방향 고려
+POST {{base}}/api/recommendations
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "tripId": 13,
+  "currentLat": 37.4920,
+  "currentLng": 126.7240,
+  "radiusMinute": 15,
+  "transportMode": "CAR",
+  "keepOriginalCategory": false,
+  "considerNextPlan": true
+}
+
+###
+
+### 3-3. SSE 스트리밍 추천 (실시간)
+POST {{base}}/api/recommendations/stream
+Authorization: Bearer {{token}}
+Content-Type: application/json
+Accept: text/event-stream
+
+{
+  "tripId": 13,
+  "currentLat": 37.4920,
+  "currentLng": 126.7240,
+  "radiusMinute": 10,
+  "transportMode": "WALK",
+  "keepOriginalCategory": false,
+  "considerNextPlan": false
+}
+
+
+### ============================================================
+###  기능 4. 날씨 알림
+### ============================================================
+
+### 4-1. 미확인 날씨 알림 조회 (userId=1 → 본인 ID로 변경)
+GET {{base}}/api/notifications/1
+Authorization: Bearer {{token}}
+
+
+### ============================================================
+###  기능 5. 개인화 학습
+### ============================================================
+
+### 5-1. 취향 요약 조회 (데이터 쌓이면 힐링/현지 등 분석 결과 표시)
+GET {{base}}/api/preferences/1/summary
+Authorization: Bearer {{token}}
+
+###
+
+### 5-2. 피드백 보내기 (추천 결과에서 장소 선택 시 호출)
+POST {{base}}/api/preferences/feedback
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "userId": 1,
+  "shownPlaceIds": [188, 195, 196],
+  "selectedPlaceId": 195
+}
+
+
+### ============================================================
+###  기능 6. 틈새 추천 (현지 모드)
+### ============================================================
+
+### 6-1. 일정 갭 목록 조회 — 30분 이상 비는 시간 감지
+GET {{base}}/api/trips/13/gaps
+Authorization: Bearer {{token}}
+
+###
+
+### 6-2. 이동수단 지정해서 갭 재계산
+GET {{base}}/api/trips/13/gaps?mode=CAR
+Authorization: Bearer {{token}}
+
+###
+
+### 6-3. 틈새 추천 — SSE 스트리밍 (갭 사이 장소 실시간 추천)
+POST {{base}}/api/trips/13/gaps/recommend/stream
+Authorization: Bearer {{token}}
+Content-Type: application/json
+Accept: text/event-stream
+
+{
+  "beforePlanId": 11,
+  "afterPlanId": 12
+}
+
+
+### ============================================================
+###  장소 상세 조회 (추가 확인용)
+### ============================================================
+
+### 장소 AI 요약 조회 (placeId는 추천 결과에서 확인)
+GET {{base}}/api/places/195/summary
+Authorization: Bearer {{token}}
+
+###
+
+### 장소 상세 정보
+GET {{base}}/api/places/195
+Authorization: Bearer {{token}}
