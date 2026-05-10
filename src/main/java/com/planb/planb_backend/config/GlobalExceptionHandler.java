@@ -1,5 +1,6 @@
 package com.planb.planb_backend.config;
 
+import com.planb.planb_backend.config.exception.BusinessException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.MethodArgumentNotValidException;
@@ -10,6 +11,13 @@ import java.util.Map;
 
 @RestControllerAdvice
 public class GlobalExceptionHandler {
+
+    // 비즈니스 규칙 위반 (ErrorCode 기반) → 각 ErrorCode의 HTTP 상태 반환
+    @ExceptionHandler(BusinessException.class)
+    public ResponseEntity<Map<String, String>> handleBusiness(BusinessException e) {
+        return ResponseEntity.status(e.getErrorCode().getStatus())
+                .body(Map.of("error", e.getMessage()));
+    }
 
     // 데이터 없음 / 권한 없음 → 404
     @ExceptionHandler(IllegalArgumentException.class)

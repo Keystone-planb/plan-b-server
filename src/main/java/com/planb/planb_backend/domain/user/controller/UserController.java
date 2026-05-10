@@ -3,6 +3,8 @@ package com.planb.planb_backend.domain.user.controller;
 import com.planb.planb_backend.auth.AuthService;
 import com.planb.planb_backend.domain.user.dto.AuthResponse;
 import com.planb.planb_backend.domain.user.dto.SignupRequest;
+import com.planb.planb_backend.domain.user.dto.UpdateProfileRequest;
+import com.planb.planb_backend.domain.user.dto.UpdateProfileResponse;
 import com.planb.planb_backend.domain.user.dto.UserProfileResponse;
 import com.planb.planb_backend.domain.user.service.UserService;
 import io.swagger.v3.oas.annotations.Operation;
@@ -39,6 +41,17 @@ public class UserController {
     @GetMapping("/me")
     public ResponseEntity<UserProfileResponse> getMe(Authentication authentication) {
         return ResponseEntity.ok(userService.getProfile(authentication.getName()));
+    }
+
+    @Operation(
+        summary = "프로필 수정",
+        description = "닉네임 또는 비밀번호를 수정합니다. 소셜 로그인 유저는 비밀번호 변경 불가."
+    )
+    @PatchMapping("/me")
+    public ResponseEntity<UpdateProfileResponse> updateProfile(
+            @RequestBody UpdateProfileRequest request,
+            Authentication authentication) {
+        return ResponseEntity.ok(userService.updateProfile(authentication.getName(), request));
     }
 
     @Operation(summary = "회원 탈퇴", description = "현재 로그인한 유저의 계정을 탈퇴 처리합니다.")
