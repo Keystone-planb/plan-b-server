@@ -39,6 +39,10 @@ public class PreferenceService {
      */
     @Transactional
     public void applyFeedback(Long userId, List<Long> shownPlaceIds, Long selectedPlaceId) {
+        if (shownPlaceIds == null || shownPlaceIds.isEmpty()) {
+            log.info("[Preference] shownPlaceIds 없음 — 피드백 스킵 (userId={})", userId);
+            return;
+        }
         for (Long placeId : shownPlaceIds) {
             Optional<Place> placeOpt = placeRepository.findById(placeId);
             if (placeOpt.isEmpty()) continue;

@@ -98,13 +98,12 @@ public class RecommendationController {
         description = "분석이 완료된 장소부터 1개씩 실시간으로 push합니다. " +
                       "progress → place(×N) → done 순서로 이벤트가 전송됩니다."
     )
-    @PostMapping(value = "/recommendations/stream")
+    @PostMapping(value = "/recommendations/stream", produces = "text/event-stream;charset=UTF-8")
     public SseEmitter streamRecommend(
             @RequestBody RecommendRequest request,
             Authentication authentication,
             HttpServletResponse response) {
 
-        response.setContentType("text/event-stream;charset=UTF-8");
         response.setCharacterEncoding("UTF-8");
 
         User user = findUser(authentication.getName());
@@ -167,6 +166,11 @@ public class RecommendationController {
             @PathVariable Long planId,
             @RequestBody ReplaceRequest request,
             Authentication authentication) {
+
+        if (request.getNewGooglePlaceId() == null || request.getNewGooglePlaceId().isBlank()) {
+            return ResponseEntity.badRequest().body(
+                    ReplaceResponse.builder().message("newGooglePlaceId는 필수입니다.").build());
+        }
 
         tripService.replaceTripPlace(
                 authentication.getName(),

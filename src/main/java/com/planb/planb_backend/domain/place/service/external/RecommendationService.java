@@ -582,7 +582,7 @@ public class RecommendationService {
                 if (!done.get()) emitter.complete();
 
             } catch (Exception e) {
-                log.error("[SSE] 스트리밍 처리 오류: {}", e.getMessage());
+                log.error("[SSE] 스트리밍 처리 오류: ", e);
                 if (!done.get()) emitter.completeWithError(e);
             }
         }, analysisExecutor);
