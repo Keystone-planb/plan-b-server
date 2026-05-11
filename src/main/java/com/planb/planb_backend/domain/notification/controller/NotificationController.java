@@ -83,6 +83,26 @@ public class NotificationController {
         return ResponseEntity.ok("날씨 스케줄러 실행 완료");
     }
 
+    /**
+     * POST /api/notifications/actions/seed-test?userId=6&tripPlaceId=123
+     * 테스트용 날씨 알림 강제 생성 — 날씨/날짜/강수 조건 우회
+     * 생성된 알림은 GET /api/notifications/{userId} 에서 즉시 조회 가능
+     */
+    @Operation(
+        summary = "[테스트] 날씨 알림 강제 생성",
+        description = "날씨 조건과 무관하게 지정한 userId/tripPlaceId로 테스트 알림을 즉시 생성합니다."
+    )
+    @PostMapping("/actions/seed-test")
+    public ResponseEntity<?> seedTestNotification(
+            @RequestParam Long userId,
+            @RequestParam Long tripPlaceId) {
+        try {
+            return ResponseEntity.ok(notificationService.seedTestNotification(userId, tripPlaceId));
+        } catch (IllegalArgumentException e) {
+            return ResponseEntity.badRequest().body(e.getMessage());
+        }
+    }
+
     /** 본인 확인 — userId와 로그인 사용자 이메일 불일치 시 403 */
     private void checkOwner(Long userId, String email) {
         // userRepository 조회는 서비스 계층에서 수행하므로

@@ -261,6 +261,45 @@ public class NotificationService {
     }
 
     // ───────────────────────────────────────────
+    //  [테스트용] 날씨 알림 시드 생성
+    // ───────────────────────────────────────────
+
+    /**
+     * 테스트용 날씨 알림 강제 생성
+     * 날씨 API / 강수 확률 조건 / 날짜 범위를 모두 우회하여 즉시 알림을 삽입한다.
+     *
+     * @param userId      알림 수신 사용자 ID
+     * @param tripPlaceId 원래 일정 TripPlace PK (planId로 사용됨)
+     */
+    @Transactional
+    public NotificationResponse seedTestNotification(Long userId, Long tripPlaceId) {
+        TripPlace tp = tripPlaceRepository.findById(tripPlaceId)
+                .orElseThrow(() -> new IllegalArgumentException("tripPlaceId=" + tripPlaceId + " 를 찾을 수 없습니다."));
+
+        Place originalPlace = placeRepository.findByGooglePlaceId(tp.getPlaceId()).orElse(null);
+
+        Notification n = new Notification();
+        n.setUserId(userId);
+        n.setPlanId(tripPlaceId);
+        n.setType("WEATHER_RAIN");
+        n.setTitle("[테스트] 비가 올 예정이에요!");
+        n.setBody(tp.getName() + " 방문 시간에 비가 올 것 같아요. 실내 대안 장소를 확인해보세요.");
+        n.setPrecipitationProb(85); // 테스트용 고정 강수 확률
+        n.setAlternativePlaceIds("[]");
+
+        if (originalPlace != null) {
+            n.setOriginalLat(originalPlace.getLatitude());
+            n.setOriginalLng(originalPlace.getLongitude());
+        }
+
+        Notification saved = notificationRepository.save(n);
+        log.info("[Notification][SEED] 테스트 알림 생성 완료 — notificationId={}, userId={}, tripPlaceId={}",
+                saved.getId(), userId, tripPlaceId);
+
+        return toResponse(saved);
+    }
+
+    // ───────────────────────────────────────────
     //  내부 헬퍼
     // ───────────────────────────────────────────
 
