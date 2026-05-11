@@ -23,6 +23,12 @@ public class PlaceDetailResponse {
     private String type;            // FOOD / CAFE / SIGHTS / SHOP / MARKET / THEME / CULTURE / PARK
     private String mood;            // 분위기 태그
 
+    // AI 리뷰 요약 (DB reviewData JSONB에서 추출, 미분석 장소는 null)
+    private String reviewSummary;   // 전체 한줄 요약
+    private String googleReview;    // 구글 플랫폼 요약
+    private String naverReview;     // 네이버 블로그 플랫폼 요약
+    private String instaReview;     // 인스타그램 플랫폼 요약
+
     /**
      * 구글 Places API reviews 배열의 단일 리뷰
      * AI 분석용으로 텍스트 데이터를 원문 그대로 보존합니다.

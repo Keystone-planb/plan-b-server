@@ -1,5 +1,6 @@
 package com.planb.planb_backend.domain.place.service;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.planb.planb_backend.config.GoogleMapsConfig;
 import com.planb.planb_backend.domain.place.dto.*;
 import com.planb.planb_backend.domain.place.entity.Place;
@@ -32,6 +33,7 @@ public class PlaceService {
     private final GoogleMapsConfig googleMapsConfig; // google.maps.api-key 사용
     private final WebClient webClient;
     private final PlaceRepository placeRepository;
+    private final ObjectMapper objectMapper = new ObjectMapper();
 
     public PlaceService(GoogleMapsConfig googleMapsConfig, WebClient.Builder webClientBuilder,
                         PlaceRepository placeRepository) {
@@ -219,6 +221,8 @@ public class PlaceService {
                 ? ((Number) result.get("rating")).doubleValue()
                 : null;
 
+        String reviewData = dbPlace.map(Place::getReviewData).orElse(null);
+
         return PlaceDetailResponse.builder()
                 .placeId(placeId)
                 .name((String) result.get("name"))
@@ -231,22 +235,62 @@ public class PlaceService {
                 .space(dbPlace.map(p -> p.getSpace() != null ? p.getSpace().name() : null).orElse(null))
                 .type(dbPlace.map(p -> p.getType() != null ? p.getType().name() : null).orElse(null))
                 .mood(dbPlace.map(p -> p.getMood() != null ? p.getMood().name() : null).orElse(null))
+                .reviewSummary(extractTotalSummary(reviewData))
+                .googleReview(extractPlatformSummary(reviewData, "Google"))
+                .naverReview(extractPlatformSummary(reviewData, "Naver"))
+                .instaReview(extractPlatformSummary(reviewData, "Instagram"))
                 .build();
     }
 
     /**
      * GET /api/places/{placeId}/summary
-     * 장소 AI 요약 (OpenAI API 예정)
+     * 장소 AI 요약 — DB reviewData에서 totalSummary + 플랫폼별 요약 반환
+     * AI 분석이 완료된 장소는 실데이터, 미분석 장소는 null 반환
      */
     public PlaceSummaryResponse getPlaceSummary(String placeId) {
         log.info("[Place] AI 요약 요청 - placeId: {}", placeId);
 
-        // TODO: OpenAI API 연동 (리뷰 수집 후 요약)
+        Optional<Place> dbPlace = placeRepository.findByGooglePlaceId(placeId);
+        String reviewData = dbPlace.map(Place::getReviewData).orElse(null);
+
         return PlaceSummaryResponse.builder()
                 .placeId(placeId)
-                .aiSummary("분위기 있는 인테리어와 친절한 직원으로 유명한 카페입니다. 커피 퀄리티가 높고 디저트도 맛있습니다.")
-                .keywords(List.of("감성 인테리어", "친절한 직원", "커피 맛집", "디저트 추천"))
+                .aiSummary(extractTotalSummary(reviewData))
+                .googleReview(extractPlatformSummary(reviewData, "Google"))
+                .naverReview(extractPlatformSummary(reviewData, "Naver"))
+                .instaReview(extractPlatformSummary(reviewData, "Instagram"))
                 .build();
+    }
+
+    // ───────────────────────────────────────────
+    //  reviewData JSONB 파싱 헬퍼
+    //  DB 저장 구조: {"totalSummary":"...", "platformSummaries":{"Google":"...","Naver":"...","Instagram":"..."}}
+    // ───────────────────────────────────────────
+
+    private String extractTotalSummary(String reviewData) {
+        if (reviewData == null || reviewData.isBlank()) return null;
+        try {
+            Map<?, ?> map = objectMapper.readValue(reviewData, Map.class);
+            Object val = map.get("totalSummary");
+            return val != null ? val.toString() : null;
+        } catch (Exception e) {
+            log.warn("[Place] totalSummary 파싱 실패: {}", e.getMessage());
+            return null;
+        }
+    }
+
+    private String extractPlatformSummary(String reviewData, String platform) {
+        if (reviewData == null || reviewData.isBlank()) return null;
+        try {
+            Map<?, ?> map = objectMapper.readValue(reviewData, Map.class);
+            Object summaries = map.get("platformSummaries");
+            if (!(summaries instanceof Map)) return null;
+            Object val = ((Map<?, ?>) summaries).get(platform);
+            return val != null ? val.toString() : null;
+        } catch (Exception e) {
+            log.warn("[Place] platformSummary({}) 파싱 실패: {}", platform, e.getMessage());
+            return null;
+        }
     }
 
     /**
