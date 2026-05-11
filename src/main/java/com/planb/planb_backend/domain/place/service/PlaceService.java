@@ -303,6 +303,23 @@ public class PlaceService {
     }
 
     /**
+     * GET /api/places/{placeId}/analysis-status
+     * AI 분석 완료 여부 확인
+     * PENDING  : DB에 레코드가 없거나 space 미분석 상태
+     * COMPLETE : space/type/mood 분석 결과 존재
+     */
+    public PlaceAnalysisStatusResponse getAnalysisStatus(String placeId) {
+        boolean complete = placeRepository.findByGooglePlaceId(placeId)
+                .map(p -> p.getSpace() != null)
+                .orElse(false);
+
+        return PlaceAnalysisStatusResponse.builder()
+                .placeId(placeId)
+                .status(complete ? "COMPLETE" : "PENDING")
+                .build();
+    }
+
+    /**
      * GET /api/places/{placeId}/freshness
      * 장소 정보 최신성 확인 (운영 중단 여부 등)
      */

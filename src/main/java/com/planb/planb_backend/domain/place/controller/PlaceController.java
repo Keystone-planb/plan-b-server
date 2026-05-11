@@ -1,6 +1,7 @@
 package com.planb.planb_backend.domain.place.controller;
 
 import com.planb.planb_backend.domain.place.dto.*;
+import com.planb.planb_backend.domain.place.dto.PlaceAnalysisStatusResponse;
 import com.planb.planb_backend.domain.place.entity.Place;
 import com.planb.planb_backend.domain.place.repository.PlaceRepository;
 import com.planb.planb_backend.domain.place.service.PlaceService;
@@ -66,6 +67,15 @@ public class PlaceController {
     @GetMapping("/{placeId}/summary")
     public ResponseEntity<PlaceSummaryResponse> getPlaceSummary(@PathVariable String placeId) {
         return ResponseEntity.ok(placeService.getPlaceSummary(placeId));
+    }
+
+    /**
+     * GET /api/places/{placeId}/analysis-status
+     * AI 분석 완료 여부 확인 — 프론트에서 폴링 용도
+     */
+    @GetMapping("/{placeId}/analysis-status")
+    public ResponseEntity<PlaceAnalysisStatusResponse> getAnalysisStatus(@PathVariable String placeId) {
+        return ResponseEntity.ok(placeService.getAnalysisStatus(placeId));
     }
 
     /**
