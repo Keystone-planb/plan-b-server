@@ -31,6 +31,32 @@ public class PlaceAnalysisService {
     private final ObjectMapper objectMapper = new ObjectMapper();
 
     /**
+     * 구글 Place ID 기준으로 비동기 AI 분석 자동 실행
+     * GET /api/places/{placeId} 최초 조회 시 자동 호출됨
+     * - DB에 없으면 스켈레톤 레코드 생성 후 분석 시작
+     * - 중복 INSERT 방지: unique 제약 위반 시 기존 레코드로 폴백
+     */
+    @Async("analysisExecutor")
+    public void triggerAnalysisAsync(String googlePlaceId) {
+        log.info("[PlaceAnalysis] 자동 분석 트리거 - googlePlaceId: {}", googlePlaceId);
+        try {
+            Place place = placeRepository.findByGooglePlaceId(googlePlaceId).orElseGet(() -> {
+                Place newPlace = new Place();
+                newPlace.setGooglePlaceId(googlePlaceId);
+                newPlace.setName("분석 중...");
+                return placeRepository.saveAndFlush(newPlace);
+            });
+            processPlaceAnalysis(place.getId());
+            log.info("[PlaceAnalysis] 자동 분석 완료 - googlePlaceId: {}", googlePlaceId);
+        } catch (org.springframework.dao.DataIntegrityViolationException e) {
+            // 동시 요청으로 중복 INSERT 발생 시 — 이미 다른 스레드가 처리 중이므로 무시
+            log.info("[PlaceAnalysis] 중복 분석 요청 무시 - googlePlaceId: {}", googlePlaceId);
+        } catch (Exception e) {
+            log.error("[PlaceAnalysis] 자동 분석 실패 - googlePlaceId: {}, error: ", googlePlaceId, e);
+        }
+    }
+
+    /**
      * 특정 장소에 대한 AI 리뷰 분석 실행 및 결과 객체 반환
      */
     @Transactional

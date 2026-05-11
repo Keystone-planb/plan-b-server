@@ -5,6 +5,7 @@ import com.planb.planb_backend.config.GoogleMapsConfig;
 import com.planb.planb_backend.domain.place.dto.*;
 import com.planb.planb_backend.domain.place.entity.Place;
 import com.planb.planb_backend.domain.place.repository.PlaceRepository;
+import com.planb.planb_backend.domain.place.service.external.PlaceAnalysisService;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
@@ -33,13 +34,15 @@ public class PlaceService {
     private final GoogleMapsConfig googleMapsConfig; // google.maps.api-key 사용
     private final WebClient webClient;
     private final PlaceRepository placeRepository;
+    private final PlaceAnalysisService placeAnalysisService;
     private final ObjectMapper objectMapper = new ObjectMapper();
 
     public PlaceService(GoogleMapsConfig googleMapsConfig, WebClient.Builder webClientBuilder,
-                        PlaceRepository placeRepository) {
+                        PlaceRepository placeRepository, PlaceAnalysisService placeAnalysisService) {
         this.googleMapsConfig = googleMapsConfig;
         this.webClient = webClientBuilder.baseUrl(PLACES_BASE_URL).build();
         this.placeRepository = placeRepository;
+        this.placeAnalysisService = placeAnalysisService;
     }
 
     /**
@@ -179,6 +182,12 @@ public class PlaceService {
 
         // DB에서 AI 분석 태그 조회 (분석 미완료 장소는 Optional.empty)
         Optional<Place> dbPlace = placeRepository.findByGooglePlaceId(placeId);
+
+        // 최초 조회 시 백그라운드 분석 자동 트리거 (두 번째 조회부터 AI 필드 채워짐)
+        if (dbPlace.isEmpty()) {
+            log.info("[Place] DB 미등록 장소 — 자동 분석 시작: {}", placeId);
+            placeAnalysisService.triggerAnalysisAsync(placeId);
+        }
 
         return toDetailDto(placeId, result, dbPlace);
     }
