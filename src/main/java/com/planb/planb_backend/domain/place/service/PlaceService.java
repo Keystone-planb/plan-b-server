@@ -2,6 +2,8 @@ package com.planb.planb_backend.domain.place.service;
 
 import com.planb.planb_backend.config.GoogleMapsConfig;
 import com.planb.planb_backend.domain.place.dto.*;
+import com.planb.planb_backend.domain.place.entity.Place;
+import com.planb.planb_backend.domain.place.repository.PlaceRepository;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
@@ -10,6 +12,7 @@ import org.springframework.web.reactive.function.client.WebClient;
 import java.util.Collections;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.stream.Collectors;
 
 /**
@@ -28,10 +31,13 @@ public class PlaceService {
 
     private final GoogleMapsConfig googleMapsConfig; // google.maps.api-key 사용
     private final WebClient webClient;
+    private final PlaceRepository placeRepository;
 
-    public PlaceService(GoogleMapsConfig googleMapsConfig, WebClient.Builder webClientBuilder) {
+    public PlaceService(GoogleMapsConfig googleMapsConfig, WebClient.Builder webClientBuilder,
+                        PlaceRepository placeRepository) {
         this.googleMapsConfig = googleMapsConfig;
         this.webClient = webClientBuilder.baseUrl(PLACES_BASE_URL).build();
+        this.placeRepository = placeRepository;
     }
 
     /**
@@ -168,13 +174,18 @@ public class PlaceService {
         }
 
         Map<String, Object> result = (Map<String, Object>) response.get("result");
-        return toDetailDto(placeId, result);
+
+        // DB에서 AI 분석 태그 조회 (분석 미완료 장소는 Optional.empty)
+        Optional<Place> dbPlace = placeRepository.findByGooglePlaceId(placeId);
+
+        return toDetailDto(placeId, result, dbPlace);
     }
 
     /**
      * 구글 API 응답의 result 객체를 PlaceDetailResponse로 변환
+     * dbPlace: AI 분석 태그(space/type/mood) 병합용. 미분석 장소는 Optional.empty()
      */
-    private PlaceDetailResponse toDetailDto(String placeId, Map<String, Object> result) {
+    private PlaceDetailResponse toDetailDto(String placeId, Map<String, Object> result, Optional<Place> dbPlace) {
         // 위경도 추출
         Map<String, Object> geometry = (Map<String, Object>) result.get("geometry");
         Map<String, Object> location = (Map<String, Object>) geometry.get("location");
@@ -217,6 +228,9 @@ public class PlaceService {
                 .lat(lat)
                 .lng(lng)
                 .reviews(reviews)
+                .space(dbPlace.map(p -> p.getSpace() != null ? p.getSpace().name() : null).orElse(null))
+                .type(dbPlace.map(p -> p.getType() != null ? p.getType().name() : null).orElse(null))
+                .mood(dbPlace.map(p -> p.getMood() != null ? p.getMood().name() : null).orElse(null))
                 .build();
     }
 

@@ -18,6 +18,11 @@ public class PlaceDetailResponse {
     private double lng;
     private List<Review> reviews;   // AI(LLM) 분석에 전달할 리뷰 목록
 
+    // AI 분석 태그 (DB places 테이블에서 조회, 미분석 장소는 null)
+    private String space;           // INDOOR / OUTDOOR / MIX
+    private String type;            // FOOD / CAFE / SIGHTS / SHOP / MARKET / THEME / CULTURE / PARK
+    private String mood;            // 분위기 태그
+
     /**
      * 구글 Places API reviews 배열의 단일 리뷰
      * AI 분석용으로 텍스트 데이터를 원문 그대로 보존합니다.
