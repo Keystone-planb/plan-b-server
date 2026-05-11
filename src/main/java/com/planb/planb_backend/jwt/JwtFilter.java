@@ -1,5 +1,7 @@
 package com.planb.planb_backend.jwt;
 
+import io.jsonwebtoken.ExpiredJwtException;
+import io.jsonwebtoken.JwtException;
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
@@ -7,6 +9,8 @@ import jakarta.servlet.http.HttpServletResponse;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
+import org.springframework.security.core.GrantedAuthority;
+import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.util.StringUtils;
 import org.springframework.web.filter.OncePerRequestFilter;
@@ -52,21 +56,44 @@ public class JwtFilter extends OncePerRequestFilter {
                                     FilterChain filterChain) throws ServletException, IOException {
         String token = resolveToken(request);
 
-        if (StringUtils.hasText(token)) {
-            if (jwtProvider.validateToken(token)) {
-                String email = jwtProvider.getEmailFromToken(token);
-                UsernamePasswordAuthenticationToken authentication =
-                        new UsernamePasswordAuthenticationToken(email, null, List.of());
-                SecurityContextHolder.getContext().setAuthentication(authentication);
-                log.debug("[JWT] 인증 성공 - email: {}, uri: {}", email, request.getRequestURI());
-            } else {
-                log.warn("[JWT] 토큰 검증 실패 - uri: {}", request.getRequestURI());
-            }
-        } else {
+        // Bearer 토큰이 없으면 인증 없이 진행 — 보호된 엔드포인트는 EntryPoint가 401 처리
+        if (!StringUtils.hasText(token)) {
             log.debug("[JWT] Authorization 헤더 없음 - uri: {}", request.getRequestURI());
+            filterChain.doFilter(request, response);
+            return;
+        }
+
+        try {
+            String email = jwtProvider.getEmailFromToken(token);
+            String role  = jwtProvider.getRoleFromToken(token);
+
+            // role 클레임 → ROLE_USER / ROLE_ADMIN 형태로 GrantedAuthority 적재
+            List<GrantedAuthority> authorities = StringUtils.hasText(role)
+                    ? List.of(new SimpleGrantedAuthority("ROLE_" + role))
+                    : List.of();
+
+            UsernamePasswordAuthenticationToken authentication =
+                    new UsernamePasswordAuthenticationToken(email, null, authorities);
+            SecurityContextHolder.getContext().setAuthentication(authentication);
+            log.debug("[JWT] 인증 성공 - email: {}, role: {}, uri: {}", email, role, request.getRequestURI());
+
+        } catch (ExpiredJwtException e) {
+            log.warn("[JWT] 만료된 토큰 - uri: {}", request.getRequestURI());
+            sendUnauthorized(response, "만료된 토큰입니다. 다시 로그인해 주세요.");
+            return;
+        } catch (JwtException | IllegalArgumentException e) {
+            log.warn("[JWT] 유효하지 않은 토큰 - uri: {}, cause: {}", request.getRequestURI(), e.getMessage());
+            sendUnauthorized(response, "유효하지 않은 토큰입니다.");
+            return;
         }
 
         filterChain.doFilter(request, response);
+    }
+
+    private void sendUnauthorized(HttpServletResponse response, String message) throws IOException {
+        response.setStatus(HttpServletResponse.SC_UNAUTHORIZED);
+        response.setContentType("application/json;charset=UTF-8");
+        response.getWriter().write("{\"error\": \"" + message + "\"}");
     }
 
     private String resolveToken(HttpServletRequest request) {

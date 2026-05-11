@@ -68,6 +68,13 @@ public class JwtProvider {
         return getClaims(token).getSubject();
     }
 
+    /**
+     * 토큰에서 role 클레임 추출
+     */
+    public String getRoleFromToken(String token) {
+        return (String) getClaims(token).get("role");
+    }
+
     private Claims getClaims(String token) {
         return Jwts.parser()
                 .verifyWith(secretKey)
