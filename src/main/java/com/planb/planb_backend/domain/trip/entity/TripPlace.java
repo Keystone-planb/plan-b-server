@@ -50,10 +50,10 @@ public class TripPlace {
         this.memo      = null;
     }
 
-    /** 시간/메모 수정: 장소는 그대로, 스케줄 정보만 업데이트 */
+    /** 시간/메모 수정: 장소는 그대로, null 필드는 기존 값 유지 */
     public void updateSchedule(String visitTime, String endTime, String memo) {
-        this.visitTime = visitTime;
-        this.endTime   = endTime;
-        this.memo      = memo;
+        if (visitTime != null) this.visitTime = visitTime;
+        if (endTime   != null) this.endTime   = endTime;
+        if (memo      != null) this.memo      = memo;
     }
 }

@@ -17,6 +17,8 @@ import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
+import jakarta.servlet.http.HttpServletResponse;
+
 import java.util.List;
 
 /**
@@ -71,11 +73,14 @@ public class GapController {
         description = "두 일정 사이의 갭에 맞는 장소를 실시간으로 추천합니다. " +
                       "progress → place(×최대5) → done 순서로 이벤트가 전송됩니다."
     )
-    @PostMapping(value = "/recommend/stream", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
+    @PostMapping(value = "/recommend/stream", produces = "text/event-stream;charset=UTF-8")
     public SseEmitter streamRecommend(
             @PathVariable Long tripId,
             @RequestBody GapRecommendationRequest req,
-            Authentication authentication) {
+            Authentication authentication,
+            HttpServletResponse response) {
+
+        response.setCharacterEncoding("UTF-8");
 
         User user = userRepository.findByEmail(authentication.getName())
                 .orElseThrow(() -> new IllegalArgumentException("사용자를 찾을 수 없습니다."));
