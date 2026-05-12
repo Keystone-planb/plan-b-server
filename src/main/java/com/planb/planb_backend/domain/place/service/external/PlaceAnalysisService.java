@@ -322,4 +322,50 @@ public class PlaceAnalysisService {
         place.setLastSyncedAt(LocalDateTime.now());
         return placeRepository.saveAndFlush(place);
     }
+
+    /**
+     * 장소 등록 시 좌표만 빠르게 저장 (틈새 추천 등 좌표 의존 기능을 위해)
+     * - DB에 해당 장소가 없거나 좌표가 null인 경우에만 Google API 호출
+     * - AI 전체 분석(triggerAnalysisAsync)과 별개로 가볍게 실행
+     */
+    @Async("analysisExecutor")
+    public void ensureCoordinatesAsync(String googlePlaceId) {
+        if (googlePlaceId == null || googlePlaceId.isBlank()) return;
+        try {
+            Optional<Place> existing = placeRepository.findByGooglePlaceId(googlePlaceId);
+            if (existing.isPresent() && existing.get().getLatitude() != null) {
+                log.debug("[CoordSave] 이미 좌표 존재 - 스킵: {}", googlePlaceId);
+                return;
+            }
+
+            Map<String, Object> details = googlePlaceApiService.getGooglePlaceDetails(googlePlaceId);
+            if (details == null || details.isEmpty()) {
+                log.warn("[CoordSave] Google API 응답 없음 - googlePlaceId: {}", googlePlaceId);
+                return;
+            }
+
+            Map<String, Object> geometry = (Map<String, Object>) details.get("geometry");
+            if (geometry == null) return;
+            Map<String, Object> location = (Map<String, Object>) geometry.get("location");
+            if (location == null) return;
+
+            double lat = ((Number) location.get("lat")).doubleValue();
+            double lng = ((Number) location.get("lng")).doubleValue();
+
+            Place place = existing.orElseGet(() -> {
+                Place newPlace = new Place();
+                newPlace.setGooglePlaceId(googlePlaceId);
+                newPlace.setName((String) details.getOrDefault("name", ""));
+                return newPlace;
+            });
+            place.setLatitude(lat);
+            place.setLongitude(lng);
+            placeRepository.saveAndFlush(place);
+            log.info("[CoordSave] 좌표 저장 완료: {} ({}, {})", googlePlaceId, lat, lng);
+        } catch (org.springframework.dao.DataIntegrityViolationException e) {
+            log.info("[CoordSave] 중복 저장 무시 - googlePlaceId: {}", googlePlaceId);
+        } catch (Exception e) {
+            log.warn("[CoordSave] 좌표 저장 실패 - googlePlaceId: {}, error: {}", googlePlaceId, e.getMessage());
+        }
+    }
 }

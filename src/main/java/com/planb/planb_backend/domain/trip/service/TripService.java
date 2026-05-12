@@ -2,6 +2,7 @@ package com.planb.planb_backend.domain.trip.service;
 
 import com.planb.planb_backend.domain.place.entity.Place;
 import com.planb.planb_backend.domain.place.repository.PlaceRepository;
+import com.planb.planb_backend.domain.place.service.external.PlaceAnalysisService;
 import com.planb.planb_backend.domain.trip.dto.*;
 import com.planb.planb_backend.domain.trip.entity.Itinerary;
 import com.planb.planb_backend.domain.trip.entity.TransportMode;
@@ -35,6 +36,7 @@ public class TripService {
     private final ItineraryRepository itineraryRepository;
     private final TripPlaceRepository tripPlaceRepository;
     private final PlaceRepository placeRepository;
+    private final PlaceAnalysisService placeAnalysisService;
 
     /**
      * POST /api/trips — 여행 계획 생성
@@ -161,7 +163,14 @@ public class TripService {
                 .memo(request.getMemo())
                 .build();
 
-        return AddLocationResponse.from(tripPlaceRepository.save(tripPlace));
+        AddLocationResponse saved = AddLocationResponse.from(tripPlaceRepository.save(tripPlace));
+
+        // 좌표 비동기 저장 — 틈새 추천 등 좌표 의존 기능을 위해 등록 즉시 좌표 확보
+        if (request.getPlaceId() != null && !request.getPlaceId().isBlank()) {
+            placeAnalysisService.ensureCoordinatesAsync(request.getPlaceId());
+        }
+
+        return saved;
     }
 
     /**
