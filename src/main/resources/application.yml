@@ -13,11 +13,11 @@ spring:
     username: ${DB_USERNAME}
     password: ${DB_PASSWORD}
     hikari:
-      maximum-pool-size: 5        # Supabase PgBouncer session mode 한도(15) 내에서 여유 확보
-      minimum-idle: 2             # 유휴 커넥션 최소 유지 수
+      maximum-pool-size: 3        # PgBouncer pool_size(15) / 예상 인스턴스 수(3~5) 고려
+      minimum-idle: 1             # 유휴 커넥션 최소 1개만 유지
       connection-timeout: 30000   # 풀에서 커넥션 대기 최대 30초
       idle-timeout: 600000        # 유휴 커넥션 10분 후 반납
-      max-lifetime: 1800000       # 커넥션 최대 수명 30분 (DB 세션 제한 회피)
+      max-lifetime: 1800000       # 커넥션 최대 수명 30분
       keepalive-time: 60000       # 60초마다 keepalive 쿼리로 커넥션 유지
 
   data:
@@ -29,12 +29,15 @@ spring:
 
   jpa:
     hibernate:
-      ddl-auto: update
-    show-sql: true
+      ddl-auto: none              # update → none: 스키마 검사용 isolated connection 요청 제거
+    show-sql: false               # 운영 환경 SQL 로그 비활성화 (성능 개선)
     properties:
       hibernate:
-        format_sql: true
+        format_sql: false
         dialect: org.hibernate.dialect.PostgreSQLDialect
+        jdbc:
+          lob:
+            non_contextual_creation: true
 
   mail:
     host: smtp.gmail.com
