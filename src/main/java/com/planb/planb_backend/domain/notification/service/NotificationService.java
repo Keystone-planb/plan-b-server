@@ -6,12 +6,12 @@ import com.planb.planb_backend.domain.notification.dto.AlternativePlaceDto;
 import com.planb.planb_backend.domain.notification.dto.NotificationResponse;
 import com.planb.planb_backend.domain.notification.entity.Notification;
 import com.planb.planb_backend.domain.notification.repository.NotificationRepository;
-import com.planb.planb_backend.domain.place.entity.BusinessStatus;
+import com.planb.planb_backend.domain.place.dto.UserContext;
 import com.planb.planb_backend.domain.place.entity.Place;
 import com.planb.planb_backend.domain.place.repository.PlaceRepository;
 import com.planb.planb_backend.domain.place.service.external.GooglePlaceApiService;
+import com.planb.planb_backend.domain.place.service.external.RecommendationService;
 import com.planb.planb_backend.domain.preference.service.PreferenceService;
-import com.planb.planb_backend.domain.trip.entity.Space;
 import com.planb.planb_backend.domain.trip.entity.TripPlace;
 import com.planb.planb_backend.domain.trip.repository.TripPlaceRepository;
 import com.planb.planb_backend.domain.user.entity.User;
@@ -37,6 +37,7 @@ public class NotificationService {
     private final UserRepository         userRepository;
     private final PreferenceService      preferenceService;
     private final GooglePlaceApiService  googlePlaceApiService;
+    private final RecommendationService  recommendationService;
 
     private static final int NEARBY_RADIUS_METERS = 8_000;
     private static final int MAX_ALTERNATIVES     = 3;
@@ -89,99 +90,40 @@ public class NotificationService {
     }
 
     /**
-     * 원래 장소 좌표 근처 INDOOR 장소 실시간 탐색 후 DB upsert → 대안 카드 반환.
-     * 결과를 alternative_place_ids 에 캐시하여 replacePlan() 검증에서 재사용.
+     * AI 분석 기반 대안 장소 3개 추천
+     * RecommendationService 풀 파이프라인 사용 (Google 검색 → AI 분석 → 스코어링)
+     * keepOriginalCategory=true: 원래 장소와 같은 카테고리로 검색
+     * 결과를 alternative_place_ids에 캐시하여 replacePlan() 검증에서 재사용
      */
     private List<AlternativePlaceDto> fetchLiveAlternatives(Notification n) {
-        List<Map<String, Object>> results = googlePlaceApiService.searchNearbyPlaces(
-                n.getOriginalLat(), n.getOriginalLng(), NEARBY_RADIUS_METERS, "cafe");
+        // tripId 조회 (이동수단 자동 상속용)
+        Long tripId = tripPlaceRepository.findById(n.getPlanId())
+                .map(tp -> tp.getItinerary().getTrip().getTripId())
+                .orElse(null);
 
-        List<Long> altIds = new ArrayList<>();
-        List<AlternativePlaceDto> dtos = new ArrayList<>();
+        UserContext ctx = UserContext.builder()
+                .userId(n.getUserId())
+                .tripId(tripId)
+                .currentPlanId(n.getPlanId())
+                .currentLat(n.getOriginalLat())
+                .currentLng(n.getOriginalLng())
+                .radiusMinute(20)
+                .keepOriginalCategory(true)
+                .considerNextPlan(false)
+                .build();
 
-        for (Map<String, Object> result : results) {
-            if (altIds.size() >= MAX_ALTERNATIVES) break;
+        List<com.planb.planb_backend.domain.place.entity.Place> places =
+                recommendationService.getRecommendations(ctx);
 
-            String gId = (String) result.get("place_id");
-            if (gId == null) continue;
+        List<AlternativePlaceDto> dtos = places.stream()
+                .limit(MAX_ALTERNATIVES)
+                .map(AlternativePlaceDto::from)
+                .collect(Collectors.toList());
 
-            String bsRaw = (String) result.get("business_status");
-            if (bsRaw != null && !BusinessStatus.OPERATIONAL.name().equalsIgnoreCase(bsRaw)) continue;
-
-            Place place = placeRepository.findByGooglePlaceId(gId).orElseGet(() -> {
-                Place p = new Place();
-                p.setGooglePlaceId(gId);
-                p.setName((String) result.get("name"));
-                p.setSpace(Space.INDOOR);
-                try {
-                    // 좌표
-                    @SuppressWarnings("unchecked")
-                    Map<String, Object> geometry = (Map<String, Object>) result.get("geometry");
-                    @SuppressWarnings("unchecked")
-                    Map<String, Object> location = geometry != null
-                            ? (Map<String, Object>) geometry.get("location") : null;
-                    if (location != null) {
-                        Object lat = location.get("lat");
-                        Object lng = location.get("lng");
-                        if (lat != null) p.setLatitude(((Number) lat).doubleValue());
-                        if (lng != null) p.setLongitude(((Number) lng).doubleValue());
-                    }
-                    // 평점
-                    Object ratingObj = result.get("rating");
-                    if (ratingObj != null) p.setRating(((Number) ratingObj).doubleValue());
-                    // 평점 수
-                    Object totalObj = result.get("user_ratings_total");
-                    if (totalObj != null) p.setUserRatingsTotal(((Number) totalObj).intValue());
-                    // 주소 (vicinity)
-                    String vicinity = (String) result.get("vicinity");
-                    if (vicinity != null) p.setAddress(vicinity);
-                    // 카테고리 (types 첫 번째)
-                    @SuppressWarnings("unchecked")
-                    List<String> types = (List<String>) result.get("types");
-                    if (types != null && !types.isEmpty()) p.setCategory(types.get(0));
-                    // 사진 URL
-                    @SuppressWarnings("unchecked")
-                    List<Map<String, Object>> photos = (List<Map<String, Object>>) result.get("photos");
-                    if (photos != null && !photos.isEmpty()) {
-                        String ref = (String) photos.get(0).get("photo_reference");
-                        if (ref != null) p.setPhotoUrl(googlePlaceApiService.buildPhotoUrl(ref));
-                    }
-                } catch (Exception ignored) { }
-                return placeRepository.save(p);
-            });
-
-            // 기존 장소에 누락된 필드가 있으면 업데이트
-            boolean updated = false;
-            try {
-                if (place.getRating() == null) {
-                    Object r = result.get("rating");
-                    if (r != null) { place.setRating(((Number) r).doubleValue()); updated = true; }
-                }
-                if (place.getAddress() == null) {
-                    String v = (String) result.get("vicinity");
-                    if (v != null) { place.setAddress(v); updated = true; }
-                }
-                if (place.getCategory() == null) {
-                    @SuppressWarnings("unchecked")
-                    List<String> t = (List<String>) result.get("types");
-                    if (t != null && !t.isEmpty()) { place.setCategory(t.get(0)); updated = true; }
-                }
-                if (place.getPhotoUrl() == null) {
-                    @SuppressWarnings("unchecked")
-                    List<Map<String, Object>> ph = (List<Map<String, Object>>) result.get("photos");
-                    if (ph != null && !ph.isEmpty()) {
-                        String ref = (String) ph.get(0).get("photo_reference");
-                        if (ref != null) { place.setPhotoUrl(googlePlaceApiService.buildPhotoUrl(ref)); updated = true; }
-                    }
-                }
-                if (updated) placeRepository.save(place);
-            } catch (Exception ignored) { }
-
-            altIds.add(place.getId());
-            dtos.add(AlternativePlaceDto.from(place));
-        }
-
-        // replacePlan() 검증용으로 캐시
+        // replacePlan() 검증용 캐시
+        List<Long> altIds = dtos.stream()
+                .map(AlternativePlaceDto::getPlaceId)
+                .collect(Collectors.toList());
         try {
             n.setAlternativePlaceIds(objectMapper.writeValueAsString(altIds));
             notificationRepository.save(n);
@@ -189,8 +131,7 @@ public class NotificationService {
             log.warn("[Notification] altIds 캐시 저장 실패: {}", e.getMessage());
         }
 
-        log.info("[Notification] 실시간 대안 탐색 완료 — notificationId={}, 좌표=({},{}), {}개",
-                n.getId(), n.getOriginalLat(), n.getOriginalLng(), dtos.size());
+        log.info("[Notification] AI 대안 추천 완료 — notificationId={}, {}개", n.getId(), dtos.size());
         return dtos;
     }
 
