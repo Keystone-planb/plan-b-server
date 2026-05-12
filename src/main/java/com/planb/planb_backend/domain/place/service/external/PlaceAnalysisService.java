@@ -360,6 +360,16 @@ public class PlaceAnalysisService {
             });
             place.setLatitude(lat);
             place.setLongitude(lng);
+
+            // category 미설정 시 Google types에서 추출 (keepOriginalCategory 폴백용)
+            if (place.getCategory() == null || place.getCategory().isBlank()) {
+                List<String> types = (List<String>) details.get("types");
+                if (types != null && !types.isEmpty()) {
+                    place.setCategory(determineBestCategory(types));
+                    log.info("[CoordSave] 카테고리 저장: {} → {}", googlePlaceId, place.getCategory());
+                }
+            }
+
             placeRepository.saveAndFlush(place);
             log.info("[CoordSave] 좌표 저장 완료: {} ({}, {})", googlePlaceId, lat, lng);
         } catch (org.springframework.dao.DataIntegrityViolationException e) {
