@@ -79,6 +79,11 @@ public class RecommendationService {
         // [STEP 0] 이동 수단 자동 상속 — context 에 명시 없으면 trip.transportMode 사용
         resolveTransportMode(context);
 
+        // [STEP 0.5] keepOriginalCategory: 원본 일정 장소의 PlaceType을 selectedType에 주입
+        if (context.isKeepOriginalCategory()) {
+            resolveOriginalCategory(context);
+        }
+
         // [STEP 1] 다음 일정 자동 추적 (동선 가중치용)
         if (context.isConsiderNextPlan() && context.getNextLat() == null && context.getTripId() != null) {
             resolveNextDestination(context);
@@ -505,6 +510,11 @@ public class RecommendationService {
                 // [S1.5] 이동 수단 자동 상속
                 resolveTransportMode(context);
 
+                // [S1.6] keepOriginalCategory: 원본 일정 장소의 PlaceType을 selectedType에 주입
+                if (context.isKeepOriginalCategory()) {
+                    resolveOriginalCategory(context);
+                }
+
                 // [S2] 다음 목적지 자동 추적
                 if (context.isConsiderNextPlan() && context.getNextLat() == null
                         && context.getTripId() != null) {
@@ -608,6 +618,35 @@ public class RecommendationService {
     private boolean passesOpeningHoursFilter(Place place, UserContext context) {
         if (context.getMustBeOpenAt() == null) return true;
         return openingHoursService.isOpenAt(place.getOpeningHours(), context.getMustBeOpenAt());
+    }
+
+    /**
+     * keepOriginalCategory=true 일 때:
+     * currentPlanId(TripPlace)의 원본 장소 PlaceType을 조회하여 context.selectedType에 주입.
+     * → Google Nearby Search 때 원본 카테고리로 필터링, AI 2차 검열은 별도로 스킵됨.
+     *
+     * AI 분석 미완료(place.type = null)인 경우 카테고리 필터 없이 진행.
+     */
+    private void resolveOriginalCategory(UserContext context) {
+        if (context.getCurrentPlanId() == null) return;
+        try {
+            tripPlaceRepository.findById(context.getCurrentPlanId()).ifPresent(tp -> {
+                if (tp.getPlaceId() == null) return;
+                placeRepository.findByGooglePlaceId(tp.getPlaceId()).ifPresent(place -> {
+                    if (place.getType() != null) {
+                        context.setSelectedType(place.getType().name());
+                        log.info("[OriginalCategory] planId={} → 원본 카테고리={} 적용",
+                                context.getCurrentPlanId(), place.getType().name());
+                    } else {
+                        log.warn("[OriginalCategory] planId={} 원본 장소 AI 분석 미완료 — 카테고리 필터 없이 진행",
+                                context.getCurrentPlanId());
+                    }
+                });
+            });
+        } catch (Exception e) {
+            log.warn("[OriginalCategory] 카테고리 조회 실패 (planId={}): {}",
+                    context.getCurrentPlanId(), e.getMessage());
+        }
     }
 
     /**
