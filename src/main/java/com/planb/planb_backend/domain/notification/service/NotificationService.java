@@ -12,6 +12,7 @@ import com.planb.planb_backend.domain.place.repository.PlaceRepository;
 import com.planb.planb_backend.domain.place.service.external.GooglePlaceApiService;
 import com.planb.planb_backend.domain.place.service.external.RecommendationService;
 import com.planb.planb_backend.domain.preference.service.PreferenceService;
+import com.planb.planb_backend.domain.trip.dto.AddLocationResponse;
 import com.planb.planb_backend.domain.trip.entity.TripPlace;
 import com.planb.planb_backend.domain.trip.repository.TripPlaceRepository;
 import com.planb.planb_backend.domain.user.entity.User;
@@ -63,6 +64,13 @@ public class NotificationService {
     }
 
     private NotificationResponse toResponse(Notification n) {
+        // 영향받는 기존 일정 장소 정보 조회
+        AlternativePlaceDto originalPlace = tripPlaceRepository.findById(n.getPlanId())
+                .map(tp -> placeRepository.findByGooglePlaceId(tp.getPlaceId()).orElse(null))
+                .filter(java.util.Objects::nonNull)
+                .map(AlternativePlaceDto::from)
+                .orElse(null);
+
         List<AlternativePlaceDto> alternatives;
 
         if (n.getOriginalLat() != null && n.getOriginalLng() != null) {
@@ -85,6 +93,7 @@ public class NotificationService {
                 .body(n.getBody())
                 .precipitationProb(n.getPrecipitationProb())
                 .createdAt(n.getCreatedAt())
+                .originalPlace(originalPlace)
                 .alternatives(alternatives)
                 .build();
     }
@@ -95,6 +104,11 @@ public class NotificationService {
      * AI 분석 미완료(space=null) 장소는 후보로 포함해 결과 부족 방지.
      */
     private List<AlternativePlaceDto> fetchLiveAlternatives(Notification n) {
+        // 원래 장소 Google Place ID 조회 (명시적 제외용)
+        String originalGooglePlaceId = tripPlaceRepository.findById(n.getPlanId())
+                .map(tp -> tp.getPlaceId())
+                .orElse(null);
+
         Long tripId = tripPlaceRepository.findById(n.getPlanId())
                 .map(tp -> tp.getItinerary().getTrip().getTripId())
                 .orElse(null);
@@ -112,13 +126,19 @@ public class NotificationService {
 
         List<Place> all = recommendationService.getRecommendations(ctx);
 
+        // 원래 장소(강릉역 등) 명시적 제외 — collectExcludedPlaceIds 미스 방지
+        final String origId = originalGooglePlaceId;
+        List<Place> filtered = (origId == null) ? all : all.stream()
+                .filter(p -> !java.util.Objects.equals(p.getGooglePlaceId(), origId))
+                .collect(Collectors.toList());
+
         // INDOOR / MIX 우선, 없으면 전체 후보에서 선택 (AI 미분석 장소 포함)
-        List<Place> indoor = all.stream()
+        List<Place> indoor = filtered.stream()
                 .filter(p -> p.getSpace() == com.planb.planb_backend.domain.trip.entity.Space.INDOOR
                           || p.getSpace() == com.planb.planb_backend.domain.trip.entity.Space.MIX)
                 .collect(Collectors.toList());
 
-        List<Place> candidates = indoor.isEmpty() ? all : indoor;
+        List<Place> candidates = indoor.isEmpty() ? filtered : indoor;
 
         List<AlternativePlaceDto> dtos = candidates.stream()
                 .limit(MAX_ALTERNATIVES)
@@ -154,7 +174,7 @@ public class NotificationService {
      * @throws IllegalArgumentException newPlaceId가 알림 대안 목록에 없을 때 (400)
      */
     @Transactional
-    public String replacePlan(Long notificationId, Long newPlaceId, String userEmail) {
+    public AddLocationResponse replacePlan(Long notificationId, Long newPlaceId, String userEmail) {
         Notification notification = notificationRepository.findById(notificationId)
                 .orElseThrow(() -> new IllegalArgumentException("알림을 찾을 수 없습니다."));
 
@@ -166,7 +186,7 @@ public class NotificationService {
             throw new IllegalArgumentException("선택한 장소가 이 알림의 대안 목록에 없습니다.");
         }
 
-        // 1) + 2) TripPlace 교체
+        // 1) + 2) TripPlace 교체 (기존 행 in-place 업데이트 — 새 행 추가 없음)
         TripPlace tripPlace = tripPlaceRepository.findById(notification.getPlanId())
                 .orElseThrow(() -> new IllegalArgumentException("일정을 찾을 수 없습니다."));
 
@@ -174,7 +194,7 @@ public class NotificationService {
                 .orElseThrow(() -> new IllegalArgumentException("장소를 찾을 수 없습니다."));
 
         tripPlace.replace(newPlace.getGooglePlaceId(), newPlace.getName());
-        tripPlaceRepository.save(tripPlace);
+        TripPlace saved = tripPlaceRepository.save(tripPlace);
 
         // 3) 알림 읽음 처리
         notification.setRead(true);
@@ -184,7 +204,7 @@ public class NotificationService {
         preferenceService.applyFeedback(notification.getUserId(), altIds, newPlaceId);
 
         log.info("[Notification] 일정 교체 완료 — planId={}, newPlaceId={}", notification.getPlanId(), newPlaceId);
-        return "일정이 교체되었습니다. (planId=" + notification.getPlanId() + ", newPlaceId=" + newPlaceId + ")";
+        return AddLocationResponse.from(saved);
     }
 
     // ───────────────────────────────────────────

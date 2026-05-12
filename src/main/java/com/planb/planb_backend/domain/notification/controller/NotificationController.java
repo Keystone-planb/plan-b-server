@@ -3,6 +3,7 @@ package com.planb.planb_backend.domain.notification.controller;
 import com.planb.planb_backend.domain.notification.dto.NotificationResponse;
 import com.planb.planb_backend.domain.notification.scheduler.WeatherScheduler;
 import com.planb.planb_backend.domain.notification.service.NotificationService;
+import com.planb.planb_backend.domain.trip.dto.AddLocationResponse;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import lombok.RequiredArgsConstructor;
@@ -47,8 +48,8 @@ public class NotificationController {
             Authentication authentication) {
 
         try {
-            String message = notificationService.replacePlan(notificationId, newPlaceId, authentication.getName());
-            return ResponseEntity.ok(message);
+            AddLocationResponse updated = notificationService.replacePlan(notificationId, newPlaceId, authentication.getName());
+            return ResponseEntity.ok(updated);
         } catch (IllegalArgumentException e) {
             return ResponseEntity.badRequest().body(e.getMessage());
         }

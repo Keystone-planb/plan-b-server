@@ -17,5 +17,6 @@ public class NotificationResponse {
     private String                  body;
     private Integer                 precipitationProb;
     private LocalDateTime           createdAt;
+    private AlternativePlaceDto     originalPlace;   // 영향받는 기존 일정 장소
     private List<AlternativePlaceDto> alternatives;
 }
