@@ -7,20 +7,20 @@ spring:
   application:
     name: planb_backend
 
-datasource:
-  url: ${SPRING_DATASOURCE_URL}
-  driver-class-name: org.postgresql.Driver
-  username: ${DB_USERNAME}
-  password: ${DB_PASSWORD}
-  hikari:
-    # 수파베이스 Nano 티어(제한 15개) 및 인스턴스 확장을 고려하여 3~5 사이 유지
-    maximum-pool-size: 5
-    minimum-idle: 2
-    connection-timeout: 30000
-    idle-timeout: 600000
-    max-lifetime: 1800000
-    # Transaction 모드에서 연결 유효성 검사를 위해 추가 권장
-    connection-test-query: SELECT 1
+  datasource:
+    url: ${SPRING_DATASOURCE_URL}
+    driver-class-name: org.postgresql.Driver
+    username: ${DB_USERNAME}
+    password: ${DB_PASSWORD}
+    hikari:
+      # 수파베이스 Nano 티어(제한 15개) 및 인스턴스 확장을 고려하여 3~5 사이 유지
+      maximum-pool-size: 5
+      minimum-idle: 2
+      connection-timeout: 30000
+      idle-timeout: 600000
+      max-lifetime: 1800000
+      # Transaction 모드에서 연결 유효성 검사를 위해 추가 권장
+      connection-test-query: SELECT 1
 
   data:
     redis:
