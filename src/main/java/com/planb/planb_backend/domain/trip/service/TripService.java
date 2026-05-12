@@ -139,8 +139,20 @@ public class TripService {
     }
 
     /**
+     * DELETE /api/plans/{planId} — 일정 장소(TripPlace) 단건 삭제
+     * 소유자 검증 후 물리적 삭제
+     * Itinerary → TripPlace: orphanRemoval = true 이므로 repository.delete() 로 즉시 반영됨
+     */
+    @Transactional
+    public void removeTripPlace(String email, Long tripPlaceId) {
+        TripPlace tripPlace = tripPlaceRepository.findByIdAndUserEmail(tripPlaceId, email)
+                .orElseThrow(() -> new IllegalArgumentException("일정을 찾을 수 없거나 접근 권한이 없습니다."));
+        tripPlaceRepository.delete(tripPlace);
+    }
+
+    /**
      * POST /api/plans/{planId}/replace — 일정 장소 PLAN B 대체
-     * placeId/name 교체 + visitTime/endTime/memo null 초기화
+     * placeId/name 교체, visitTime/endTime null 초기화, memo는 유지
      */
     @Transactional
     public void replaceTripPlace(String email, Long tripPlaceId, String newGooglePlaceId, String newPlaceName) {

@@ -35,7 +35,7 @@ import java.util.List;
 @RequiredArgsConstructor
 public class GapDetectionService {
 
-    private static final int MIN_GAP_MINUTES = 30;
+    private static final int MIN_GAP_MINUTES = 60;
     private static final int DEFAULT_PLAN_DURATION_MINUTES = 60;
     private static final int SAFETY_MARGIN_MINUTES = 10;
 

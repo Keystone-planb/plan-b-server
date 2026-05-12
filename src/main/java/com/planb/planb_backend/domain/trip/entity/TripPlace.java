@@ -39,15 +39,16 @@ public class TripPlace {
     private String memo;        // 사용자 메모
 
     /**
-     * PLAN B 대체: 장소 ID와 이름을 새 값으로 교체
-     * 시간/메모는 새 장소 맞게 다시 설정해야 하므로 null 초기화
+     * PLAN B 대체: 장소 ID와 이름만 교체
+     * visitTime/endTime은 새 장소 기준으로 다시 설정해야 하므로 null 초기화
+     * memo는 기획 변경으로 기존 값 그대로 유지
      */
     public void replace(String newPlaceId, String newPlaceName) {
         this.placeId   = newPlaceId;
         this.name      = "[" + newPlaceName + "] (PLAN B)";
         this.visitTime = null;
         this.endTime   = null;
-        this.memo      = null;
+        // memo 유지 (기존 메모 보존)
     }
 
     /** 시간/메모 수정: 장소는 그대로, null 필드는 기존 값 유지 */

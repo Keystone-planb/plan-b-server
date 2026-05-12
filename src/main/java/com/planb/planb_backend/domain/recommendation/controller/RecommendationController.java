@@ -188,6 +188,22 @@ public class RecommendationController {
     }
 
     /**
+     * DELETE /api/plans/{planId}
+     * 일정(TripPlace) 단건 삭제
+     */
+    @Operation(
+        summary = "일정 장소 삭제",
+        description = "특정 일정(planId = tripPlaceId)을 삭제합니다. 본인 소유 일정만 삭제 가능합니다."
+    )
+    @DeleteMapping("/plans/{planId}")
+    public ResponseEntity<Void> removeTripPlace(
+            @PathVariable Long planId,
+            Authentication authentication) {
+        tripService.removeTripPlace(authentication.getName(), planId);
+        return ResponseEntity.noContent().build();
+    }
+
+    /**
      * PATCH /api/plans/{planId}/schedule
      * 장소는 그대로, 방문 시간(visitTime/endTime)과 메모만 수정
      */
