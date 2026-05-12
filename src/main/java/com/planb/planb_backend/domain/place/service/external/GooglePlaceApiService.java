@@ -123,19 +123,28 @@ public class GooglePlaceApiService {
                 + photoReference + "&key=" + apiKey;
     }
 
-    /** PLAN B Enum → 구글 Places API type 변환 */
+    /** PLAN B Enum → 구글 Places API type 변환 (Google raw 카테고리 문자열도 처리) */
     private String mapToGoogleType(String category) {
         if (category == null) return "";
         return switch (category.toUpperCase()) {
-            case "FOOD"    -> "restaurant";
-            case "CAFE"    -> "cafe";
-            case "SIGHTS"  -> "tourist_attraction";
-            case "SHOP"    -> "shopping_mall";
-            case "MARKET"  -> "establishment";
-            case "THEME"   -> "amusement_park";
-            case "CULTURE" -> "museum";
-            case "PARK"    -> "park";
-            default        -> "";
+            // PLAN B PlaceType enum
+            case "FOOD"              -> "restaurant";
+            case "CAFE"              -> "cafe";
+            case "SIGHTS"            -> "tourist_attraction";
+            case "SHOP"              -> "shopping_mall";
+            case "MARKET"            -> "establishment";
+            case "THEME"             -> "amusement_park";
+            case "CULTURE"           -> "museum";
+            case "PARK"              -> "park";
+            // Google raw 카테고리 문자열 (AI 분석 미완료 시 place.category 폴백용)
+            case "RESTAURANT", "MEAL_TAKEAWAY", "MEAL_DELIVERY", "FOOD_POINT_OF_INTEREST" -> "restaurant";
+            case "BAKERY"            -> "cafe";
+            case "TOURIST_ATTRACTION", "POINT_OF_INTEREST" -> "tourist_attraction";
+            case "SHOPPING_MALL", "DEPARTMENT_STORE", "CLOTHING_STORE" -> "shopping_mall";
+            case "AMUSEMENT_PARK"    -> "amusement_park";
+            case "MUSEUM", "ART_GALLERY" -> "museum";
+            case "NATURAL_FEATURE", "CAMPGROUND" -> "park";
+            default                  -> "";
         };
     }
 }

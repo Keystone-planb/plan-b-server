@@ -634,11 +634,17 @@ public class RecommendationService {
                 if (tp.getPlaceId() == null) return;
                 placeRepository.findByGooglePlaceId(tp.getPlaceId()).ifPresent(place -> {
                     if (place.getType() != null) {
+                        // AI 분석 완료: PlaceType enum 사용
                         context.setSelectedType(place.getType().name());
-                        log.info("[OriginalCategory] planId={} → 원본 카테고리={} 적용",
+                        log.info("[OriginalCategory] planId={} → 원본 카테고리={} 적용 (AI 분석 완료)",
                                 context.getCurrentPlanId(), place.getType().name());
+                    } else if (place.getCategory() != null && !place.getCategory().isBlank()) {
+                        // AI 분석 미완료: Google raw 카테고리 문자열로 폴백
+                        context.setSelectedType(place.getCategory());
+                        log.info("[OriginalCategory] planId={} → Google raw 카테고리={} 폴백 적용 (AI 미완료)",
+                                context.getCurrentPlanId(), place.getCategory());
                     } else {
-                        log.warn("[OriginalCategory] planId={} 원본 장소 AI 분석 미완료 — 카테고리 필터 없이 진행",
+                        log.warn("[OriginalCategory] planId={} 카테고리 정보 없음 — 필터 없이 진행",
                                 context.getCurrentPlanId());
                     }
                 });
