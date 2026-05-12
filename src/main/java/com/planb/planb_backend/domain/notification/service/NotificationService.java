@@ -90,13 +90,11 @@ public class NotificationService {
     }
 
     /**
-     * AI 분석 기반 대안 장소 3개 추천
-     * RecommendationService 풀 파이프라인 사용 (Google 검색 → AI 분석 → 스코어링)
-     * keepOriginalCategory=true: 원래 장소와 같은 카테고리로 검색
-     * 결과를 alternative_place_ids에 캐시하여 replacePlan() 검증에서 재사용
+     * AI 분석 기반 실내(INDOOR) 대안 장소 3개 추천
+     * 비 오는 날씨 알림이므로 카테고리 무관하게 INDOOR/MIX 장소 우선 반환.
+     * AI 분석 미완료(space=null) 장소는 후보로 포함해 결과 부족 방지.
      */
     private List<AlternativePlaceDto> fetchLiveAlternatives(Notification n) {
-        // tripId 조회 (이동수단 자동 상속용)
         Long tripId = tripPlaceRepository.findById(n.getPlanId())
                 .map(tp -> tp.getItinerary().getTrip().getTripId())
                 .orElse(null);
@@ -108,14 +106,21 @@ public class NotificationService {
                 .currentLat(n.getOriginalLat())
                 .currentLng(n.getOriginalLng())
                 .radiusMinute(20)
-                .keepOriginalCategory(true)
+                .keepOriginalCategory(false)   // 카테고리 무관 — 실내 어디든
                 .considerNextPlan(false)
                 .build();
 
-        List<com.planb.planb_backend.domain.place.entity.Place> places =
-                recommendationService.getRecommendations(ctx);
+        List<Place> all = recommendationService.getRecommendations(ctx);
 
-        List<AlternativePlaceDto> dtos = places.stream()
+        // INDOOR / MIX 우선, 없으면 전체 후보에서 선택 (AI 미분석 장소 포함)
+        List<Place> indoor = all.stream()
+                .filter(p -> p.getSpace() == com.planb.planb_backend.domain.trip.entity.Space.INDOOR
+                          || p.getSpace() == com.planb.planb_backend.domain.trip.entity.Space.MIX)
+                .collect(Collectors.toList());
+
+        List<Place> candidates = indoor.isEmpty() ? all : indoor;
+
+        List<AlternativePlaceDto> dtos = candidates.stream()
                 .limit(MAX_ALTERNATIVES)
                 .map(AlternativePlaceDto::from)
                 .collect(Collectors.toList());
