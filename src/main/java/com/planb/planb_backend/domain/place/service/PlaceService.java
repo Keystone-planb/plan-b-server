@@ -197,9 +197,15 @@ public class PlaceService {
      * dbPlace: AI 분석 태그(space/type/mood) 병합용. 미분석 장소는 Optional.empty()
      */
     private PlaceDetailResponse toDetailDto(String placeId, Map<String, Object> result, Optional<Place> dbPlace) {
-        // 위경도 추출
+        // 위경도 추출 — geometry 누락 시 500 대신 명확한 400 반환
         Map<String, Object> geometry = (Map<String, Object>) result.get("geometry");
+        if (geometry == null) {
+            throw new IllegalStateException("구글 API 응답에 좌표(geometry) 정보가 없습니다. (placeId: " + placeId + ")");
+        }
         Map<String, Object> location = (Map<String, Object>) geometry.get("location");
+        if (location == null) {
+            throw new IllegalStateException("구글 API 응답에 location 정보가 없습니다. (placeId: " + placeId + ")");
+        }
         double lat = ((Number) location.get("lat")).doubleValue();
         double lng = ((Number) location.get("lng")).doubleValue();
 

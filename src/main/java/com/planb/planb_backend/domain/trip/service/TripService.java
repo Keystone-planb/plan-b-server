@@ -1,5 +1,7 @@
 package com.planb.planb_backend.domain.trip.service;
 
+import com.planb.planb_backend.domain.place.entity.Place;
+import com.planb.planb_backend.domain.place.repository.PlaceRepository;
 import com.planb.planb_backend.domain.trip.dto.*;
 import com.planb.planb_backend.domain.trip.entity.Itinerary;
 import com.planb.planb_backend.domain.trip.entity.TransportMode;
@@ -18,7 +20,10 @@ import java.time.LocalDate;
 import java.time.LocalTime;
 import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
+import java.util.stream.Collectors;
 
 @Service
 @RequiredArgsConstructor
@@ -29,6 +34,7 @@ public class TripService {
     private final UserRepository userRepository;
     private final ItineraryRepository itineraryRepository;
     private final TripPlaceRepository tripPlaceRepository;
+    private final PlaceRepository placeRepository;
 
     /**
      * POST /api/trips — 여행 계획 생성
@@ -80,11 +86,31 @@ public class TripService {
 
     /**
      * GET /api/trips/{id} — 여행 상세 조회
+     * 일정에 포함된 모든 placeId 기반으로 DB에서 좌표를 배치 조회해 응답에 포함
      */
     public TripDetailResponse getTripDetail(String email, Long tripId) {
         User user = findUser(email);
         Trip trip = findTripByOwner(tripId, user);
-        return TripDetailResponse.from(trip);
+
+        // 모든 일정 장소의 googlePlaceId 수집
+        List<String> placeIds = trip.getItineraries().stream()
+                .flatMap(it -> it.getPlaces().stream())
+                .map(TripPlace::getPlaceId)
+                .filter(id -> id != null && !id.isBlank())
+                .distinct()
+                .collect(Collectors.toList());
+
+        // DB에서 좌표 배치 조회 → coordMap 빌드
+        Map<String, double[]> coordMap = new HashMap<>();
+        if (!placeIds.isEmpty()) {
+            placeRepository.findAllByGooglePlaceIdIn(placeIds).forEach(p -> {
+                if (p.getLatitude() != null && p.getLongitude() != null) {
+                    coordMap.put(p.getGooglePlaceId(), new double[]{p.getLatitude(), p.getLongitude()});
+                }
+            });
+        }
+
+        return TripDetailResponse.from(trip, coordMap);
     }
 
     /**

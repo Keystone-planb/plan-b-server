@@ -12,6 +12,7 @@ import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
+import java.util.Map;
 
 @Getter
 public class TripDetailResponse {
@@ -23,19 +24,19 @@ public class TripDetailResponse {
     private final List<Mood> travelStyles;
     private final List<ItineraryResponse> itineraries;
 
-    private TripDetailResponse(Trip trip) {
+    private TripDetailResponse(Trip trip, Map<String, double[]> coordMap) {
         this.tripId       = trip.getTripId();
         this.title        = trip.getTitle();
         this.startDate    = trip.getStartDate();
         this.endDate      = trip.getEndDate();
         this.travelStyles = trip.getTravelStyles();
         this.itineraries  = trip.getItineraries().stream()
-                .map(ItineraryResponse::from)
+                .map(i -> ItineraryResponse.from(i, coordMap))
                 .toList();
     }
 
-    public static TripDetailResponse from(Trip trip) {
-        return new TripDetailResponse(trip);
+    public static TripDetailResponse from(Trip trip, Map<String, double[]> coordMap) {
+        return new TripDetailResponse(trip, coordMap);
     }
 
     // ── 일정(Itinerary) 응답 ───────────────────────────────────────
@@ -46,22 +47,22 @@ public class TripDetailResponse {
         private final LocalDate date;
         private final List<PlaceResponse> places;
 
-        private ItineraryResponse(Itinerary itinerary) {
+        private ItineraryResponse(Itinerary itinerary, Map<String, double[]> coordMap) {
             this.itineraryId = itinerary.getItineraryId();
             this.day         = itinerary.getDay();
             this.date        = itinerary.getDate();
-            this.places      = buildPlaceResponses(itinerary);
+            this.places      = buildPlaceResponses(itinerary, coordMap);
         }
 
-        public static ItineraryResponse from(Itinerary itinerary) {
-            return new ItineraryResponse(itinerary);
+        public static ItineraryResponse from(Itinerary itinerary, Map<String, double[]> coordMap) {
+            return new ItineraryResponse(itinerary, coordMap);
         }
 
         /**
          * visitTime 기준 오름차순 정렬 후,
          * 이전 장소 endTime ↔ 다음 장소 visitTime 사이의 여유 시간(분)을 계산해서 주입
          */
-        private static List<PlaceResponse> buildPlaceResponses(Itinerary itinerary) {
+        private static List<PlaceResponse> buildPlaceResponses(Itinerary itinerary, Map<String, double[]> coordMap) {
             // visitTime null이면 맨 뒤로 정렬
             List<TripPlace> sorted = new ArrayList<>(itinerary.getPlaces());
             sorted.sort(Comparator.comparing(
@@ -86,7 +87,11 @@ public class TripDetailResponse {
                         }
                     }
                 }
-                result.add(PlaceResponse.from(current, gap));
+
+                double[] coords = coordMap.getOrDefault(current.getPlaceId(), null);
+                Double lat = coords != null ? coords[0] : null;
+                Double lng = coords != null ? coords[1] : null;
+                result.add(PlaceResponse.from(current, gap, lat, lng));
             }
             return result;
         }
@@ -104,8 +109,11 @@ public class TripDetailResponse {
         private final String memo;
         /** 다음 장소까지의 여유 시간(분). 마지막 장소는 null */
         private final Integer transitGapMinutes;
+        /** DB places 테이블 기준 좌표 — 미분석 장소는 null */
+        private final Double lat;
+        private final Double lng;
 
-        private PlaceResponse(TripPlace place, Integer transitGapMinutes) {
+        private PlaceResponse(TripPlace place, Integer transitGapMinutes, Double lat, Double lng) {
             this.tripPlaceId        = place.getTripPlaceId();
             this.placeId            = place.getPlaceId();
             this.name               = place.getName();
@@ -114,10 +122,12 @@ public class TripDetailResponse {
             this.visitOrder         = place.getVisitOrder();
             this.memo               = place.getMemo();
             this.transitGapMinutes  = transitGapMinutes;
+            this.lat                = lat;
+            this.lng                = lng;
         }
 
-        public static PlaceResponse from(TripPlace place, Integer transitGapMinutes) {
-            return new PlaceResponse(place, transitGapMinutes);
+        public static PlaceResponse from(TripPlace place, Integer transitGapMinutes, Double lat, Double lng) {
+            return new PlaceResponse(place, transitGapMinutes, lat, lng);
         }
     }
 }
