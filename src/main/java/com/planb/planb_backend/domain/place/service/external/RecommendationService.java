@@ -26,6 +26,9 @@ import java.time.format.DateTimeFormatter;
 import java.util.*;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.Executor;
+import java.util.concurrent.Executors;
+import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -488,14 +491,33 @@ public class RecommendationService {
     void doStreamAsync(UserContext context, SseEmitter emitter) {
         AtomicBoolean done = new AtomicBoolean(false);
 
+        // heartbeat: 15초마다 comment(": ping") 전송 — iOS/ALB idle timeout(60초) 방지
+        ScheduledExecutorService heartbeatScheduler = Executors.newSingleThreadScheduledExecutor();
+        ScheduledFuture<?> heartbeatTask = heartbeatScheduler.scheduleAtFixedRate(() -> {
+            if (done.get()) return;
+            try {
+                emitter.send(SseEmitter.event().comment("ping"));
+            } catch (Exception e) {
+                done.set(true);
+            }
+        }, 15, 15, TimeUnit.SECONDS);
+
         emitter.onTimeout(() -> {
             log.warn("[SSE] 연결 타임아웃");
             done.set(true);
+            heartbeatTask.cancel(true);
+            heartbeatScheduler.shutdown();
         });
-        emitter.onCompletion(() -> done.set(true));
+        emitter.onCompletion(() -> {
+            done.set(true);
+            heartbeatTask.cancel(true);
+            heartbeatScheduler.shutdown();
+        });
         emitter.onError(ex -> {
             log.warn("[SSE] 연결 오류: {}", ex.getMessage());
             done.set(true);
+            heartbeatTask.cancel(true);
+            heartbeatScheduler.shutdown();
         });
 
         // 전체 파이프라인을 비동기 실행 → 컨트롤러가 즉시 SseEmitter 반환 가능

@@ -11,7 +11,8 @@ import java.util.concurrent.ThreadPoolExecutor;
 
 /**
  * 장소 병렬 분석용 전용 ThreadPool
- * - corePoolSize 7: 1차 퍼널에서 선발된 7개 장소를 동시에 처리
+ * - corePoolSize 4: HikariCP max-pool-size(5) - 1(다른 요청 여유분) = 4
+ *   → 분석 스레드 수 > DB 커넥션 수이면 커넥션 타임아웃 발생하므로 풀 크기 기준으로 제한
  * - 작업 종료 대기: graceful shutdown 보장
  */
 @EnableAsync
@@ -22,8 +23,8 @@ public class AsyncConfig {
     @Bean(name = "analysisExecutor")
     public Executor analysisExecutor() {
         ThreadPoolTaskExecutor executor = new ThreadPoolTaskExecutor();
-        executor.setCorePoolSize(7);
-        executor.setMaxPoolSize(14);
+        executor.setCorePoolSize(4);
+        executor.setMaxPoolSize(8);
         executor.setQueueCapacity(30);
         executor.setThreadNamePrefix("place-analysis-");
         executor.setKeepAliveSeconds(60);

@@ -8,7 +8,9 @@ spring:
     name: planb_backend
 
   datasource:
-    url: ${SPRING_DATASOURCE_URL}
+    # prepareThreshold=0: PgBouncer transaction 모드 호환 — 서버사이드 Prepared Statement 비활성화
+    # driver-class-name 방식은 DriverManager 기반이므로 data-source-properties가 무시됨 → URL에 직접 파라미터 추가
+    url: ${SPRING_DATASOURCE_URL}&prepareThreshold=0
     driver-class-name: org.postgresql.Driver
     username: ${DB_USERNAME}
     password: ${DB_PASSWORD}
@@ -21,8 +23,6 @@ spring:
       max-lifetime: 1800000
       # Transaction 모드에서 연결 유효성 검사를 위해 추가 권장
       connection-test-query: SELECT 1
-      data-source-properties:
-        prepareThreshold: 0   # PgBouncer transaction 모드 호환 — 서버사이드 Prepared Statement 비활성화
 
   data:
     redis:
