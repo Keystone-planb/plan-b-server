@@ -9,8 +9,9 @@ spring:
 
   datasource:
     # prepareThreshold=0: PgBouncer transaction 모드 호환 — 서버사이드 Prepared Statement 비활성화
-    # driver-class-name 방식은 DriverManager 기반이므로 data-source-properties가 무시됨 →URL에 직접 파라미터 추가
-    url: ${SPRING_DATASOURCE_URL}&prepareThreshold=0
+    # socketTimeout=30: 끊어진 커넥션 30초 내 감지 → ABORTED 상태 커넥션 재사용 방지
+    # driver-class-name 방식은 DriverManager 기반이므로 data-source-properties가 무시됨 → URL에 직접 파라미터 추가
+    url: ${SPRING_DATASOURCE_URL}
     driver-class-name: org.postgresql.Driver
     username: ${DB_USERNAME}
     password: ${DB_PASSWORD}
@@ -19,10 +20,12 @@ spring:
       maximum-pool-size: 5
       minimum-idle: 2
       connection-timeout: 30000
+      validation-timeout: 5000     # 커넥션 유효성 검사 타임아웃 5초
       idle-timeout: 600000
-      max-lifetime: 1800000
-      # Transaction 모드에서 연결 유효성 검사를 위해 추가 권장
+      max-lifetime: 600000         # 10분 (기본 30분 → 단축): 죽은 커넥션이 pool에 오래 남지 않도록
+      # 커넥션 유효성 검사: checkout 전 ping으로 ABORTED/죽은 커넥션 조기 감지
       connection-test-query: SELECT 1
+      keepalive-time: 30000        # 30초마다 idle 커넥션 ping → 죽은 커넥션 pool에서 제거
 
   data:
     redis:

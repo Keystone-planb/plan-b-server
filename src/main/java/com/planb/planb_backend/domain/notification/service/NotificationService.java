@@ -53,8 +53,11 @@ public class NotificationService {
      * 미확인 알림 + 대안 카드 목록 조회
      * original_lat/lng 가 있으면 원래 장소 근처에서 실시간 INDOOR 탐색.
      * 없으면 pre-stored alternative_place_ids fallback.
+     *
+     * @Transactional 제거: fetchLiveAlternatives → recommendationService.getRecommendations
+     * 내부에서 Google API 호출이 발생해 DB 커넥션을 장시간 점유하는 문제 방지.
+     * 각 repository 호출은 Spring Data JPA 기본 트랜잭션으로 처리된다.
      */
-    @Transactional
     public List<NotificationResponse> getUnreadNotifications(Long userId) {
         return notificationRepository
                 .findByUserIdAndIsReadFalseOrderByCreatedAtDesc(userId)

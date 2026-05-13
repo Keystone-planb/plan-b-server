@@ -59,8 +59,12 @@ public class PlaceAnalysisService {
 
     /**
      * 특정 장소에 대한 AI 리뷰 분석 실행 및 결과 객체 반환
+     *
+     * @Transactional 제거: Google API + Naver/Insta API + OpenAI API 호출이 모두 포함되어
+     * 20~30초 동안 DB 커넥션을 점유하는 문제 방지.
+     * DB 저장은 updateBasicInfo/updatePlaceAnalysisData 내부의 saveAndFlush가
+     * 각자 짧은 트랜잭션을 열어 처리한다.
      */
-    @Transactional
     public Place processPlaceAnalysis(Long placeId) throws Exception {
         Place place = placeRepository.findById(placeId)
                 .orElseThrow(() -> new IllegalArgumentException("장소를 찾을 수 없습니다."));
