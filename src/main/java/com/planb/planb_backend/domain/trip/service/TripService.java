@@ -14,6 +14,7 @@ import com.planb.planb_backend.domain.trip.repository.TripRepository;
 import com.planb.planb_backend.domain.user.entity.User;
 import com.planb.planb_backend.domain.user.repository.UserRepository;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -26,6 +27,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
 
+@Slf4j
 @Service
 @RequiredArgsConstructor
 @Transactional(readOnly = true)
@@ -166,8 +168,13 @@ public class TripService {
         AddLocationResponse saved = AddLocationResponse.from(tripPlaceRepository.save(tripPlace));
 
         // 좌표 비동기 저장 — 틈새 추천 등 좌표 의존 기능을 위해 등록 즉시 좌표 확보
+        // try-catch: 풀 초과 등 예외가 발생해도 addLocation 트랜잭션은 반드시 커밋
         if (request.getPlaceId() != null && !request.getPlaceId().isBlank()) {
-            placeAnalysisService.ensureCoordinatesAsync(request.getPlaceId());
+            try {
+                placeAnalysisService.ensureCoordinatesAsync(request.getPlaceId());
+            } catch (Exception e) {
+                log.warn("[addLocation] 좌표 비동기 저장 태스크 제출 실패 (placeId={}): {}", request.getPlaceId(), e.getMessage());
+            }
         }
 
         return saved;

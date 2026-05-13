@@ -7,6 +7,7 @@ import org.springframework.scheduling.annotation.EnableScheduling;
 import org.springframework.scheduling.concurrent.ThreadPoolTaskExecutor;
 
 import java.util.concurrent.Executor;
+import java.util.concurrent.ThreadPoolExecutor;
 
 /**
  * 장소 병렬 분석용 전용 ThreadPool
@@ -28,6 +29,8 @@ public class AsyncConfig {
         executor.setKeepAliveSeconds(60);
         executor.setWaitForTasksToCompleteOnShutdown(true);
         executor.setAwaitTerminationSeconds(30);
+        // 풀/큐 초과 시 AbortPolicy(기본) 대신 조용히 폐기 — 호출 측 트랜잭션 롤백 방지
+        executor.setRejectedExecutionHandler(new ThreadPoolExecutor.DiscardPolicy());
         executor.initialize();
         return executor;
     }
