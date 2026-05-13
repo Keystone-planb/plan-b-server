@@ -21,6 +21,8 @@ spring:
       max-lifetime: 1800000
       # Transaction 모드에서 연결 유효성 검사를 위해 추가 권장
       connection-test-query: SELECT 1
+      data-source-properties:
+        prepareThreshold: 0   # PgBouncer transaction 모드 호환 — 서버사이드 Prepared Statement 비활성화
 
   data:
     redis:
