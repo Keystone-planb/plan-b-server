@@ -110,10 +110,10 @@ public class TripDetailResponse {
         /** 다음 장소까지의 여유 시간(분). 마지막 장소는 null */
         private final Integer transitGapMinutes;
         /** DB places 테이블 기준 좌표 — 미분석 장소는 null */
-        private final Double lat;
-        private final Double lng;
+        private final Double latitude;
+        private final Double longitude;
 
-        private PlaceResponse(TripPlace place, Integer transitGapMinutes, Double lat, Double lng) {
+        private PlaceResponse(TripPlace place, Integer transitGapMinutes, Double latitude, Double longitude) {
             this.tripPlaceId        = place.getTripPlaceId();
             this.placeId            = place.getPlaceId();
             this.name               = place.getName();
@@ -122,12 +122,12 @@ public class TripDetailResponse {
             this.visitOrder         = place.getVisitOrder();
             this.memo               = place.getMemo();
             this.transitGapMinutes  = transitGapMinutes;
-            this.lat                = lat;
-            this.lng                = lng;
+            this.latitude           = latitude;
+            this.longitude          = longitude;
         }
 
-        public static PlaceResponse from(TripPlace place, Integer transitGapMinutes, Double lat, Double lng) {
-            return new PlaceResponse(place, transitGapMinutes, lat, lng);
+        public static PlaceResponse from(TripPlace place, Integer transitGapMinutes, Double latitude, Double longitude) {
+            return new PlaceResponse(place, transitGapMinutes, latitude, longitude);
         }
     }
 }
