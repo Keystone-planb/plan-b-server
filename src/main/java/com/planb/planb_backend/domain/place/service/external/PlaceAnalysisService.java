@@ -26,7 +26,7 @@ public class PlaceAnalysisService {
     private final PlaceRepository placeRepository;
     private final OpenAiAnalysisService openAiAnalysisService;
     private final GooglePlaceApiService googlePlaceApiService;
-    private final InstaApiService instaApiService;
+    // private final InstaApiService instaApiService;  // 인스타그램 API 일시 비활성화
     private final NaverApiService naverApiService;
 
     private final ObjectMapper objectMapper = new ObjectMapper();
@@ -216,7 +216,8 @@ public class PlaceAnalysisService {
         if (googleTexts.isEmpty()) googleTexts.add("데이터 없음");
         log.info(">>>> Google 리뷰: {}건", googleTexts.contains("데이터 없음") ? 0 : googleTexts.size());
 
-        // 2. Naver + Instagram — 동시에 HTTP 요청 발사
+        // 2. Naver — HTTP 요청
+        // Instagram API 일시 비활성화 (429 Too Many Requests 이슈)
         CompletableFuture<List<String>> naverFuture = CompletableFuture.supplyAsync(() -> {
             try {
                 List<String> result = naverApiService.getNaverReviews(place.getName());
@@ -232,35 +233,37 @@ public class PlaceAnalysisService {
             }
         });
 
-        CompletableFuture<List<String>> instaFuture = CompletableFuture.supplyAsync(() -> {
-            if (place.getLatitude() == null || place.getLongitude() == null) {
-                return List.of("데이터 없음");
-            }
-            try {
-                List<String> result = instaApiService.getInstagramReviews(
-                        place.getName(), place.getLatitude(), place.getLongitude());
-                if (result == null || result.isEmpty()) {
-                    log.info(">>>> Instagram 리뷰 결과 없음");
-                    return List.of("데이터 없음");
-                }
-                log.info(">>>> Instagram 리뷰: {}건", result.size());
-                return result;
-            } catch (Exception e) {
-                log.error(">>>> Instagram 수집 에러: {}", e.getMessage());
-                return List.of("데이터 없음");
-            }
-        });
+        // [Instagram 일시 비활성화 — 재활성화 시 아래 주석 해제]
+        // CompletableFuture<List<String>> instaFuture = CompletableFuture.supplyAsync(() -> {
+        //     if (place.getLatitude() == null || place.getLongitude() == null) {
+        //         return List.of("데이터 없음");
+        //     }
+        //     try {
+        //         List<String> result = instaApiService.getInstagramReviews(
+        //                 place.getName(), place.getLatitude(), place.getLongitude());
+        //         if (result == null || result.isEmpty()) {
+        //             log.info(">>>> Instagram 리뷰 결과 없음");
+        //             return List.of("데이터 없음");
+        //         }
+        //         log.info(">>>> Instagram 리뷰: {}건", result.size());
+        //         return result;
+        //     } catch (Exception e) {
+        //         log.error(">>>> Instagram 수집 에러: {}", e.getMessage());
+        //         return List.of("데이터 없음");
+        //     }
+        // });
 
-        // 3. 두 요청이 모두 끝날 때까지 대기
+        // 3. Naver 완료 대기
         List<String> naverTexts = naverFuture.join();
-        List<String> instaTexts = instaFuture.join();
+        // List<String> instaTexts = instaFuture.join();  // Instagram 비활성화
 
-        log.info("======= [DATA COLLECTION - 병렬 완료] =======");
+        log.info("======= [DATA COLLECTION - 완료] =======");
 
         Map<String, List<String>> allReviews = new HashMap<>();
         allReviews.put("Google", googleTexts);
         allReviews.put("Naver", naverTexts);
-        allReviews.put("Instagram", instaTexts);
+        allReviews.put("Instagram", List.of("데이터 부족으로 분석 불가"));  // Instagram 비활성화 중
+        // allReviews.put("Instagram", instaTexts);  // Instagram 재활성화 시 이 줄로 교체
         return allReviews;
     }
 
