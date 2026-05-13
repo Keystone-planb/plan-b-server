@@ -12,6 +12,8 @@ public class AlternativePlaceDto {
     private String name;
     private String category;
     private String space;            // INDOOR / OUTDOOR / MIX
+    private String type;             // FOOD / CAFE / SIGHTS / SHOP 등
+    private String mood;             // ACTIVE / RELAXED / ROMANTIC 등
     private Double rating;
     private Integer userRatingsTotal; // 리뷰 수
     private String address;
@@ -28,6 +30,8 @@ public class AlternativePlaceDto {
                 .name(place.getName())
                 .category(place.getCategory())
                 .space(place.getSpace() != null ? place.getSpace().name() : null)
+                .type(place.getType() != null ? place.getType().name() : null)
+                .mood(place.getMood() != null ? place.getMood().name() : null)
                 .rating(place.getRating())
                 .userRatingsTotal(place.getUserRatingsTotal())
                 .address(place.getAddress())
