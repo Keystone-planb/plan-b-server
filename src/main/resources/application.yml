@@ -9,7 +9,7 @@ spring:
 
   datasource:
     # prepareThreshold=0: PgBouncer transaction 모드 호환 — 서버사이드 Prepared Statement 비활성화
-    # driver-class-name 방식은 DriverManager 기반이므로 data-source-properties가 무시됨 → URL에 직접 파라미터 추가
+    # driver-class-name 방식은 DriverManager 기반이므로 data-source-properties가 무시됨 →URL에 직접 파라미터 추가
     url: ${SPRING_DATASOURCE_URL}&prepareThreshold=0
     driver-class-name: org.postgresql.Driver
     username: ${DB_USERNAME}
