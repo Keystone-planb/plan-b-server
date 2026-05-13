@@ -133,12 +133,13 @@ public class SecurityConfig {
     @Bean
     public CorsConfigurationSource corsConfigurationSource() {
         CorsConfiguration config = new CorsConfiguration();
-        config.setAllowedOrigins(List.of(
-                "http://localhost:3000",                    // CRA
-                "http://localhost:5173",                    // Vite
-                "http://localhost:8081",                    // Expo Web
-                "http://localhost:8082",                    // Expo Web (대체 포트)
-                "https://api-dev.planb-travel.cloud"       // api-dev 통합 테스트 서버
+        // setAllowedOriginPatterns 사용: React Native WebView는 Origin이 null/file:// 로 올 수 있어
+        // setAllowedOrigins("*")는 allowCredentials(true)와 함께 사용 불가 → Patterns 사용
+        config.setAllowedOriginPatterns(List.of(
+                "http://localhost:*",                       // 로컬 개발 (포트 무관)
+                "https://api-dev.planb-travel.cloud",       // api-dev 통합 테스트 서버
+                "null",                                     // React Native WebView (로컬 번들 파일)
+                "*"                                         // 모바일 앱 네이티브 요청
         ));
         config.setAllowedMethods(List.of("GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"));
         config.setAllowedHeaders(List.of("*"));
