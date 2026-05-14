@@ -78,34 +78,54 @@ public class WeatherScheduler {
 
     private void processTripPlace(TripPlace tp, LocalDateTime now, LocalDateTime cutoff) {
         Long planId = tp.getTripPlaceId();
+        log.info("[WeatherScheduler] ▶ 일정 확인 시작 — planId={}, 장소={}, 방문시각={}",
+                planId, tp.getName(), tp.getVisitTime());
 
         // [Skip 1] 방문 시각이 24시간 범위 밖
         LocalDateTime visitDateTime = toVisitDateTime(tp);
-        if (visitDateTime == null || visitDateTime.isBefore(now) || visitDateTime.isAfter(cutoff)) return;
+        if (visitDateTime == null) {
+            log.info("[WeatherScheduler]   ✗ SKIP — 방문 시각 미설정 (planId={})", planId);
+            return;
+        }
+        if (visitDateTime.isBefore(now)) {
+            log.info("[WeatherScheduler]   ✗ SKIP — 이미 지난 일정 (planId={}, 방문={}, 현재={})", planId, visitDateTime, now);
+            return;
+        }
+        if (visitDateTime.isAfter(cutoff)) {
+            log.info("[WeatherScheduler]   ✗ SKIP — 24시간 초과 일정 (planId={}, 방문={})", planId, visitDateTime);
+            return;
+        }
+        log.info("[WeatherScheduler]   ✓ 시간 범위 통과 — planId={}, 방문={}", planId, visitDateTime);
 
         // 원래 장소 조회
         Place originalPlace = placeRepository.findByGooglePlaceId(tp.getPlaceId()).orElse(null);
-        if (originalPlace == null || originalPlace.getLatitude() == null) return;
+        if (originalPlace == null || originalPlace.getLatitude() == null) {
+            log.info("[WeatherScheduler]   ✗ SKIP — 장소 좌표 없음 (planId={}, placeId={})", planId, tp.getPlaceId());
+            return;
+        }
 
         // [Skip 2] 원래 장소가 INDOOR
         if (Space.INDOOR == originalPlace.getSpace()) {
-            log.debug("[WeatherScheduler] INDOOR 장소 스킵: {}", tp.getName());
+            log.info("[WeatherScheduler]   ✗ SKIP — INDOOR 장소 (planId={}, 장소={})", planId, tp.getName());
             return;
         }
+        log.info("[WeatherScheduler]   ✓ 공간 타입 통과 — planId={}, space={}", planId, originalPlace.getSpace());
 
         // [Skip 3] 24시간 내 동일 planId 알림 발송 이력
         if (notificationRepository.existsByPlanIdAndCreatedAtAfter(planId, now.minusHours(24))) {
-            log.debug("[WeatherScheduler] 중복 알림 스킵: planId={}", planId);
+            log.info("[WeatherScheduler]   ✗ SKIP — 24시간 내 중복 알림 존재 (planId={})", planId);
             return;
         }
+        log.info("[WeatherScheduler]   ✓ 중복 알림 없음 — planId={}", planId);
 
         // [Skip 4] 강수 확률 70% 미만
         int pop = weatherApiService.getPrecipitationProbability(
                 originalPlace.getLatitude(), originalPlace.getLongitude(), visitDateTime);
         if (pop < POP_THRESHOLD) {
-            log.debug("[WeatherScheduler] 강수 확률 미달 스킵: planId={}, pop={}%", planId, pop);
+            log.info("[WeatherScheduler]   ✗ SKIP — 강수 확률 미달 (planId={}, pop={}%, 기준={}%)", planId, pop, POP_THRESHOLD);
             return;
         }
+        log.info("[WeatherScheduler]   ✓ 강수 확률 통과 — planId={}, pop={}%", planId, pop);
 
         log.info("[WeatherScheduler] 알림 생성 대상 — planId={}, 장소={}, POP={}%",
                 planId, tp.getName(), pop);

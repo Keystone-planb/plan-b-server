@@ -24,7 +24,7 @@ public class OpenAiAnalysisService {
 
     /**
      * GPT-4o-mini로 장소 리뷰 분석 요청
-     * 반환: space, type, mood, review_data, summaries(플랫폼별)
+     * 반환: space, type, mood, review_data,summaries(플랫폼별)
      */
     public Map<String, Object> requestAnalysis(String placeName, String category, Map<String, List<String>> reviews) {
         String prompt = String.format("""
