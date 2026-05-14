@@ -120,7 +120,7 @@ public class GapRecommendationService {
         log.info("[GapRecommendation] tripId={}, gap={}분, A→B 이동={}분({}), 가용={}분, 반경={}분, 영업검사={}",
                 tripId, gapMin, travelMin, mode, availableMin, radiusMinute, checkAt);
 
-        SseEmitter emitter = new SseEmitter(60_000L);
+        SseEmitter emitter = new SseEmitter(90_000L);
         recommendationService.doStreamAsync(ctx, emitter);
         return emitter;
     }
