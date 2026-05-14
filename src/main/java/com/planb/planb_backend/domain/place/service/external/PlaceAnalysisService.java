@@ -287,7 +287,17 @@ public class PlaceAnalysisService {
 
         try {
             if (ai.get("space") != null) {
-                place.setSpace(Space.valueOf(ai.get("space").toString().toUpperCase()));
+                String spaceStr = ai.get("space").toString().toUpperCase();
+                try {
+                    // AI가 "INDOOR | OUTDOOR" 처럼 복합값을 반환하면 MIX로 처리
+                    if (spaceStr.contains("|")) {
+                        place.setSpace(Space.MIX);
+                    } else {
+                        place.setSpace(Space.valueOf(spaceStr.trim()));
+                    }
+                } catch (Exception e) {
+                    place.setSpace(Space.MIX);
+                }
             }
             if (ai.get("type") != null) {
                 String typeStr = ai.get("type").toString().toUpperCase().replace(" ", "_");

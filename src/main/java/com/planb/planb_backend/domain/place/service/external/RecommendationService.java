@@ -479,7 +479,7 @@ public class RecommendationService {
      * - send() 실패(IOException/IllegalStateException) 시 completeWithError 호출
      */
     public SseEmitter streamRecommendations(UserContext context) {
-        SseEmitter emitter = new SseEmitter(60_000L); // 60초 타임아웃
+        SseEmitter emitter = new SseEmitter(120_000L); // 120초 타임아웃
         doStreamAsync(context, emitter);
         return emitter;
     }
