@@ -19,6 +19,7 @@ import org.springframework.stereotype.Component;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.LocalTime;
+import java.time.ZoneId;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
@@ -54,9 +55,10 @@ public class WeatherScheduler {
 
     @Scheduled(fixedRate = 4 * 60 * 60 * 1000L)
     public void checkWeatherAndNotify() {
-        LocalDate today    = LocalDate.now();
+        ZoneId kst = ZoneId.of("Asia/Seoul");
+        LocalDate today    = LocalDate.now(kst);
         LocalDate tomorrow = today.plusDays(1);
-        LocalDateTime now  = LocalDateTime.now();
+        LocalDateTime now  = LocalDateTime.now(kst);
         LocalDateTime cutoff = now.plusHours(24);
 
         log.info("[WeatherScheduler] 실행 시작 — 대상 범위: {} ~ {}", now, cutoff);
