@@ -15,7 +15,6 @@ spring:
     driver-class-name: org.postgresql.Driver
     username: ${DB_USERNAME}
     password: ${DB_PASSWORD}
-    supaDBPassword: ${SUPA_DB_PASSWORD:}
     hikari:
       # 수파베이스 Nano 티어(제한 15개) 및 인스턴스 확장을 고려하여 3~5 사이 유지
       maximum-pool-size: 5

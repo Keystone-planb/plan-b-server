@@ -54,7 +54,7 @@ public class WeatherScheduler {
 
     private final ObjectMapper objectMapper = new ObjectMapper();
 
-    @Transactional(readOnly = true)
+    @Transactional
     @Scheduled(fixedRate = 4 * 60 * 60 * 1000L)
     public void checkWeatherAndNotify() {
         ZoneId kst = ZoneId.of("Asia/Seoul");
