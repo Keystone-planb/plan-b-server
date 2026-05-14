@@ -11,10 +11,11 @@ spring:
     # prepareThreshold=0: PgBouncer transaction 모드 호환 — 서버사이드 Prepared Statement 비활성화
     # socketTimeout=30: 끊어진 커넥션 30초 내 감지 → ABORTED 상태 커넥션 재사용 방지
     # driver-class-name 방식은 DriverManager 기반이므로 data-source-properties가 무시됨 → URL에 직접 파라미터 추가
-    url: ${SPRING_DATASOURCE_URL}
+    url: jdbc:postgresql://aws-1-ap-northeast-2.pooler.supabase.com:6543/postgres?user=postgres.rhssmnigljsecallxteh&password=${SUPA_DB_PASSWORD:}&prepareThreshold=0
     driver-class-name: org.postgresql.Driver
     username: ${DB_USERNAME}
     password: ${DB_PASSWORD}
+    supaDBPassword: ${SUPA_DB_PASSWORD:}
     hikari:
       # 수파베이스 Nano 티어(제한 15개) 및 인스턴스 확장을 고려하여 3~5 사이 유지
       maximum-pool-size: 5
