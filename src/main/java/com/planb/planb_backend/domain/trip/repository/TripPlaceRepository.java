@@ -52,6 +52,13 @@ public interface TripPlaceRepository extends JpaRepository<TripPlace, Long> {
     List<TripPlace> findForScheduler(@Param("today") LocalDate today, @Param("tomorrow") LocalDate tomorrow);
 
     /**
+     * 알림 조회 시 방문 날짜 확인용 — LAZY 로딩 없이 날짜만 조회
+     * (NotificationService에서 지난 알림 자동 읽음 처리에 사용)
+     */
+    @Query("SELECT tp.itinerary.date FROM TripPlace tp WHERE tp.tripPlaceId = :id")
+    Optional<LocalDate> findItineraryDateById(@Param("id") Long id);
+
+    /**
      * [기능 6 — 틈새 추천] 특정 여행의 모든 일정을 날짜·방문시간 오름차순으로 조회
      * visitOrder(추가 순서)가 아닌 visitTime(실제 방문 시간) 기준으로 정렬해야
      * 시간 역순으로 추가된 일정도 갭 계산이 올바르게 동작함.

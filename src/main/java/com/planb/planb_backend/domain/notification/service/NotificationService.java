@@ -22,6 +22,8 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.LocalDate;
+import java.time.ZoneId;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
@@ -59,9 +61,32 @@ public class NotificationService {
      * 각 repository 호출은 Spring Data JPA 기본 트랜잭션으로 처리된다.
      */
     public List<NotificationResponse> getUnreadNotifications(Long userId) {
-        return notificationRepository
-                .findByUserIdAndIsReadFalseOrderByCreatedAtDesc(userId)
-                .stream()
+        ZoneId kst = ZoneId.of("Asia/Seoul");
+        LocalDate today = LocalDate.now(kst);
+
+        List<Notification> unread = notificationRepository
+                .findByUserIdAndIsReadFalseOrderByCreatedAtDesc(userId);
+
+        List<Notification> active  = new ArrayList<>();
+        List<Notification> expired = new ArrayList<>();
+
+        for (Notification n : unread) {
+            LocalDate visitDate = tripPlaceRepository.findItineraryDateById(n.getPlanId()).orElse(null);
+            if (visitDate == null || visitDate.isBefore(today)) {
+                expired.add(n);
+            } else {
+                active.add(n);
+            }
+        }
+
+        // 방문 날짜가 지난 알림 자동 읽음 처리 (DB 정리)
+        if (!expired.isEmpty()) {
+            expired.forEach(n -> n.setRead(true));
+            notificationRepository.saveAll(expired);
+            log.info("[Notification] 지난 일정 알림 {}개 자동 읽음 처리", expired.size());
+        }
+
+        return active.stream()
                 .map(this::toResponse)
                 .collect(Collectors.toList());
     }
