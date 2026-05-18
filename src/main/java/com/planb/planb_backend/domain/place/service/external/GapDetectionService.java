@@ -122,6 +122,7 @@ public class GapDetectionService {
     }
 
     public static int getSafetyMarginMinutes() { return SAFETY_MARGIN_MINUTES; }
+    public static int getMinGapMinutes()       { return MIN_GAP_MINUTES; }
 
     // ─────────────────────────────────────────────────────────
     //  헬퍼

@@ -86,6 +86,11 @@ public class GapRecommendationService {
 
         long gapMin = Duration.between(beforeEnd, afterStart).toMinutes();
 
+        if (gapMin < GapDetectionService.getMinGapMinutes()) {
+            throw new IllegalArgumentException(
+                    "두 일정 사이 간격이 " + GapDetectionService.getMinGapMinutes() + "분 미만입니다. (현재 " + gapMin + "분)");
+        }
+
         // 이동 수단 결정
         TransportMode mode = resolveMode(req, tripId);
 
