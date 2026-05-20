@@ -52,54 +52,76 @@ public class PlaceService {
     public PlaceSearchResponse searchPlaces(String query) {
         log.info("[Place] 장소 검색 요청 - query: {}", query);
 
-        Map<String, Object> response = webClient.get()
-                .uri(uriBuilder -> uriBuilder
-                        .path(TEXT_SEARCH_PATH)
-                        .queryParam("query", query)
-                        .queryParam("key", googleMapsConfig.getApiKey())
-                        .queryParam("language", "ko")
-                        .build())
-                .retrieve()
-                .onStatus(status -> status.is4xxClientError(), clientResponse -> {
-                    log.error("[Place] 장소 검색 클라이언트 오류 - HTTP {}", clientResponse.statusCode());
-                    return clientResponse.createException();
-                })
-                .onStatus(status -> status.is5xxServerError(), clientResponse -> {
-                    log.error("[Place] 장소 검색 구글 서버 오류 - HTTP {}", clientResponse.statusCode());
-                    return clientResponse.createException();
-                })
-                .bodyToMono(Map.class)
-                .block();
+        // 호출 1: 일반 검색 (지역구, 일반 장소 등)
+        List<Map<String, Object>> generalResults = fetchTextSearchResults(query, null);
 
-        if (response == null) {
-            log.error("[Place] 장소 검색 응답이 null - query: {}", query);
-            throw new RuntimeException("구글 Places API 응답이 없습니다.");
+        // 호출 2: tourist_attraction 타입 필터 검색 (관광명소)
+        List<Map<String, Object>> attractionResults = fetchTextSearchResults(query, "tourist_attraction");
+
+        // 두 결과 합치기 — placeId 기준 중복 제거 (일반 검색 결과 순서 우선)
+        Map<String, Map<String, Object>> merged = new java.util.LinkedHashMap<>();
+        for (Map<String, Object> r : generalResults) {
+            String placeId = (String) r.get("place_id");
+            if (placeId != null) merged.put(placeId, r);
+        }
+        for (Map<String, Object> r : attractionResults) {
+            String placeId = (String) r.get("place_id");
+            if (placeId != null) merged.putIfAbsent(placeId, r);
         }
 
-        String status = (String) response.get("status");
-        log.info("[Place] 장소 검색 응답 status: {}", status);
+        log.info("[Place] 검색 결과 — 일반: {}건, 관광명소: {}건, 합산(중복제거): {}건",
+                generalResults.size(), attractionResults.size(), merged.size());
 
-        if ("ZERO_RESULTS".equals(status)) {
-            log.info("[Place] 검색 결과 없음 - query: {}", query);
-            return PlaceSearchResponse.builder().places(Collections.emptyList()).build();
-        }
-
-        if (!"OK".equals(status)) {
-            String errorMessage = (String) response.getOrDefault("error_message", "알 수 없는 오류");
-            log.error("[Place] 장소 검색 API 오류 - status: {}, message: {}", status, errorMessage);
-            throw new RuntimeException("장소 검색에 실패했습니다. (status: " + status + ")");
-        }
-
-        List<Map<String, Object>> results = (List<Map<String, Object>>) response.get("results");
-        if (results == null || results.isEmpty()) {
-            return PlaceSearchResponse.builder().places(Collections.emptyList()).build();
-        }
-
-        List<PlaceSearchResponse.PlaceItem> places = results.stream()
+        List<PlaceSearchResponse.PlaceItem> places = merged.values().stream()
                 .map(this::toPlaceItem)
                 .collect(Collectors.toList());
 
         return PlaceSearchResponse.builder().places(places).build();
+    }
+
+    /**
+     * Google Places Text Search API 단일 호출
+     * type 파라미터가 null이면 타입 필터 없이 호출
+     */
+    private List<Map<String, Object>> fetchTextSearchResults(String query, String type) {
+        try {
+            Map<String, Object> response = webClient.get()
+                    .uri(uriBuilder -> {
+                        var builder = uriBuilder
+                                .path(TEXT_SEARCH_PATH)
+                                .queryParam("query", query)
+                                .queryParam("key", googleMapsConfig.getApiKey())
+                                .queryParam("language", "ko");
+                        if (type != null) builder.queryParam("type", type);
+                        return builder.build();
+                    })
+                    .retrieve()
+                    .onStatus(status -> status.is4xxClientError(), clientResponse -> {
+                        log.error("[Place] 장소 검색 클라이언트 오류 (type={}) - HTTP {}", type, clientResponse.statusCode());
+                        return clientResponse.createException();
+                    })
+                    .onStatus(status -> status.is5xxServerError(), clientResponse -> {
+                        log.error("[Place] 장소 검색 구글 서버 오류 (type={}) - HTTP {}", type, clientResponse.statusCode());
+                        return clientResponse.createException();
+                    })
+                    .bodyToMono(Map.class)
+                    .block();
+
+            if (response == null) return Collections.emptyList();
+
+            String status = (String) response.get("status");
+            if (!"OK".equals(status) && !"ZERO_RESULTS".equals(status)) {
+                log.warn("[Place] 장소 검색 API 오류 (type={}) - status: {}", type, status);
+                return Collections.emptyList();
+            }
+
+            List<Map<String, Object>> results = (List<Map<String, Object>>) response.get("results");
+            return results != null ? results : Collections.emptyList();
+
+        } catch (Exception e) {
+            log.warn("[Place] 장소 검색 호출 실패 (type={}) - {}", type, e.getMessage());
+            return Collections.emptyList();
+        }
     }
 
     /**
