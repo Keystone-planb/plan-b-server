@@ -79,7 +79,7 @@ public class PlaceController {
     }
 
     /**
-     * GET /api/places/{placeId}/freshness
+     *GET /api/places/{placeId}/freshness
      * 장소 정보 최신성 확인
      */
     @GetMapping("/{placeId}/freshness")
