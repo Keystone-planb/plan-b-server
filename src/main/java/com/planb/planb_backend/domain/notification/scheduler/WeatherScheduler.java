@@ -55,7 +55,7 @@ public class WeatherScheduler {
     private final ObjectMapper objectMapper = new ObjectMapper();
 
     @Transactional
-    @Scheduled(fixedRate = 4 * 60 * 60 * 1000L)
+    // @Scheduled(fixedRate = 6 * 60 * 60 * 1000L)  // 날씨 스케줄러 사용 시 주석 해제
     public void checkWeatherAndNotify() {
         ZoneId kst = ZoneId.of("Asia/Seoul");
         LocalDate today    = LocalDate.now(kst);
