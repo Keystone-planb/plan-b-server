@@ -67,6 +67,11 @@ public class RecommendationService {
     @Qualifier("analysisExecutor")
     private Executor analysisExecutor;
 
+    // SSE 스트리밍 파이프라인 전용 executor — doStreamAsync() 외부 실행에만 사용
+    @Autowired
+    @Qualifier("streamingExecutor")
+    private Executor streamingExecutor;
+
     private static final int FUNNEL_TOP_N        = 7;  // 1차 퍼널 선발 인원
     private static final int FINAL_TOP_N         = 5;  // 최종 반환 인원
     private static final int MIN_REVIEW_COUNT    = 10; // Hard Filter: 최소 리뷰 수
@@ -521,6 +526,7 @@ public class RecommendationService {
         });
 
         // 전체 파이프라인을 비동기 실행 → 컨트롤러가 즉시 SseEmitter 반환 가능
+        // streamingExecutor 사용: analysisExecutor(DiscardPolicy)와 분리하여 task 폐기 방지
         CompletableFuture.runAsync(() -> {
             try {
                 // [S1] 스켈레톤 UI 트리거용 progress 이벤트 즉시 전송
@@ -561,6 +567,20 @@ public class RecommendationService {
                 // [S7] 1차 퍼널 필터링 → 상위 7개
                 List<Place> top7 = applyFunnelFilter(allCandidates, context);
                 log.info("[SSE] 퍼널 선발 {}개 → 병렬 분석 시작", top7.size());
+
+                // [S7.5] 후보 부족 시 반경 자동 확장 (동기 버전과 동일 로직)
+                if (top7.size() < 3 && context.getRadiusMinute() < 40) {
+                    int expanded = (int)(context.getRadiusMinute() * 1.5);
+                    log.info("[SSE] 후보 부족({}) → 반경 확장: {}분 → {}분", top7.size(), context.getRadiusMinute(), expanded);
+                    context.setRadiusMinute(expanded);
+                    int expandedMeters = (int) Math.round(context.getSpeedKmPerMin() * 1000 * expanded);
+                    List<Map<String, Object>> expandedResults = googlePlaceApiService.searchNearbyPlaces(
+                            context.getCurrentLat(), context.getCurrentLng(),
+                            expandedMeters, context.getRequestedCategory());
+                    List<Place> expandedCandidates = upsertCandidates(expandedResults, excludedIds);
+                    top7 = applyFunnelFilter(expandedCandidates, context);
+                    log.info("[SSE] 반경 확장 후 퍼널 선발: {}개", top7.size());
+                }
 
                 // [S8] 병렬 분석 — 완료된 장소부터 즉시 emit
                 AtomicInteger emittedCount = new AtomicInteger(0);
@@ -610,6 +630,10 @@ public class RecommendationService {
                 }
 
                 // [S9] done 이벤트 전송 및 연결 종료
+                if (emittedCount.get() == 0) {
+                    log.warn("[SSE] place 이벤트 0개 — warning 이벤트 전송");
+                    sendSse(emitter, done, "warning", Map.of("message", "조건에 맞는 장소를 찾지 못했습니다."));
+                }
                 sendSse(emitter, done, "done", "[DONE]");
                 if (!done.get()) emitter.complete();
 
@@ -617,7 +641,7 @@ public class RecommendationService {
                 log.error("[SSE] 스트리밍 처리 오류: ", e);
                 if (!done.get()) emitter.completeWithError(e);
             }
-        }, analysisExecutor);
+        }, streamingExecutor);
     }
 
     /**

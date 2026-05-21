@@ -35,4 +35,22 @@ public class AsyncConfig {
         executor.initialize();
         return executor;
     }
+
+    /**
+     * SSE 스트리밍 파이프라인 전용 executor.
+     * doStreamAsync() 외부 실행에만 사용 — analysisExecutor 포화 시 DiscardPolicy로
+     * 스트리밍 task 자체가 폐기되는 문제를 방지한다.
+     * - CallerRunsPolicy: 풀/큐 초과 시 호출 스레드(서블릿 스레드)에서 직접 실행 → 절대 폐기 안 됨
+     */
+    @Bean(name = "streamingExecutor")
+    public Executor streamingExecutor() {
+        ThreadPoolTaskExecutor executor = new ThreadPoolTaskExecutor();
+        executor.setCorePoolSize(2);
+        executor.setMaxPoolSize(4);
+        executor.setQueueCapacity(10);
+        executor.setThreadNamePrefix("sse-streaming-");
+        executor.setRejectedExecutionHandler(new ThreadPoolExecutor.CallerRunsPolicy());
+        executor.initialize();
+        return executor;
+    }
 }
