@@ -8,6 +8,7 @@ import com.planb.planb_backend.domain.place.repository.PlaceRepository;
 import com.planb.planb_backend.domain.place.service.external.PlaceAnalysisService;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.cache.annotation.Cacheable;
 import org.springframework.stereotype.Service;
 import org.springframework.web.reactive.function.client.WebClient;
 
@@ -152,6 +153,7 @@ public class PlaceService {
      * 장소 상세 정보 조회 (Google Places Details API)
      * fields 파라미터로 필요한 데이터만 지정 → 과금 최적화
      */
+    @Cacheable(value = "placeDetail", key = "#placeId")
     public PlaceDetailResponse getPlaceDetail(String placeId) {
         log.info("[Place] 장소 상세 조회 - placeId: {}", placeId);
         // API 키 로드 확인 (보안상 앞 5자리만 출력)

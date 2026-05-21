@@ -1,12 +1,16 @@
 package com.planb.planb_backend.domain.place.dto;
 
+import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Getter;
+import lombok.NoArgsConstructor;
 
 import java.util.List;
 
 @Getter
 @Builder
+@NoArgsConstructor
+@AllArgsConstructor
 public class PlaceDetailResponse {
 
     private String placeId;
@@ -35,6 +39,8 @@ public class PlaceDetailResponse {
      */
     @Getter
     @Builder
+    @NoArgsConstructor
+    @AllArgsConstructor
     public static class Review {
         private String text;                    // 리뷰 본문 (AI 분석 대상)
         private int rating;                     // 별점 1~5
