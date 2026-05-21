@@ -97,8 +97,9 @@ public class RecommendationService {
             resolveNextDestination(context);
         }
 
-        // [STEP 2] 검색 반경 계산 (이동 수단 반영)
-        int radiusMeters = (int) Math.round(context.getSpeedKmPerMin() * 1000 * context.getRadiusMinute());
+        // [STEP 2] 검색 반경 계산 (이동 수단 반영) — Google API 최대 50,000m cap
+        int radiusMeters = (int) Math.min(50_000,
+                Math.round(context.getSpeedKmPerMin() * 1000 * context.getRadiusMinute()));
         log.info("[STEP 2] 검색 반경: {}m (mode={})", radiusMeters, context.getTransportMode());
 
         // [STEP 2.5] 이번 여행 중복 제외 목록 수집
@@ -549,8 +550,9 @@ public class RecommendationService {
                     resolveNextDestination(context);
                 }
 
-                // [S3] 검색 반경 계산 (이동 수단 반영)
-                int radiusMeters = (int) Math.round(context.getSpeedKmPerMin() * 1000 * context.getRadiusMinute());
+                // [S3] 검색 반경 계산 (이동 수단 반영) — Google API 최대 50,000m cap
+                int radiusMeters = (int) Math.min(50_000,
+                        Math.round(context.getSpeedKmPerMin() * 1000 * context.getRadiusMinute()));
 
                 // [S4] 중복 제외 목록
                 Set<String> excludedIds = collectExcludedPlaceIds(context);
@@ -573,7 +575,8 @@ public class RecommendationService {
                     int expanded = (int)(context.getRadiusMinute() * 1.5);
                     log.info("[SSE] 후보 부족({}) → 반경 확장: {}분 → {}분", top7.size(), context.getRadiusMinute(), expanded);
                     context.setRadiusMinute(expanded);
-                    int expandedMeters = (int) Math.round(context.getSpeedKmPerMin() * 1000 * expanded);
+                    int expandedMeters = (int) Math.min(50_000,
+                            Math.round(context.getSpeedKmPerMin() * 1000 * expanded));
                     List<Map<String, Object>> expandedResults = googlePlaceApiService.searchNearbyPlaces(
                             context.getCurrentLat(), context.getCurrentLng(),
                             expandedMeters, context.getRequestedCategory());
