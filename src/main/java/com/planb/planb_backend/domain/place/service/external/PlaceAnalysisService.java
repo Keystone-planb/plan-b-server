@@ -9,6 +9,10 @@ import com.planb.planb_backend.domain.trip.entity.PlaceType;
 import com.planb.planb_backend.domain.trip.entity.Space;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.redisson.api.RLock;
+import org.redisson.api.RedissonClient;
+import org.springframework.cache.Cache;
+import org.springframework.cache.CacheManager;
 import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -16,6 +20,7 @@ import org.springframework.transaction.annotation.Transactional;
 import java.time.LocalDateTime;
 import java.util.*;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
 
 @Slf4j
@@ -28,32 +33,83 @@ public class PlaceAnalysisService {
     private final GooglePlaceApiService googlePlaceApiService;
     // private final InstaApiService instaApiService;  // 인스타그램 API 일시 비활성화
     private final NaverApiService naverApiService;
+    private final RedissonClient redissonClient;
+    private final CacheManager cacheManager;
 
     private final ObjectMapper objectMapper = new ObjectMapper();
 
     /**
      * 구글 Place ID 기준으로 비동기 AI 분석 자동 실행
      * GET /api/places/{placeId} 최초 조회 시 자동 호출됨
-     * - DB에 없으면 스켈레톤 레코드 생성 후 분석 시작
-     * - 중복 INSERT 방지: unique 제약 위반 시 기존 레코드로 폴백
+     *
+     * [Redisson 분산 락]
+     * - 동일 장소에 대한 중복 분석 요청을 서버 단위로 차단
+     * - waitTime=0: 락 획득 실패 시 즉시 스킵 (분석 이미 진행 중)
+     * - leaseTime=90s: 분석 최대 소요 시간(~30s) 고려한 안전 여유
+     *
+     * [PENDING 고착 방지]
+     * - 분석 실패 시에도 fallback 값을 저장해 status가 PENDING에서 COMPLETE로 전환
      */
     @Async("analysisExecutor")
     public void triggerAnalysisAsync(String googlePlaceId) {
         log.info("[PlaceAnalysis] 자동 분석 트리거 - googlePlaceId: {}", googlePlaceId);
+
+        String lockKey = "place-analysis:" + googlePlaceId;
+        RLock lock = redissonClient.getLock(lockKey);
+        boolean acquired = false;
+
         try {
+            acquired = lock.tryLock(0, 90, TimeUnit.SECONDS);
+            if (!acquired) {
+                log.info("[PlaceAnalysis] 분산 락 획득 실패 — 이미 분석 중: {}", googlePlaceId);
+                return;
+            }
+
             Place place = placeRepository.findByGooglePlaceId(googlePlaceId).orElseGet(() -> {
                 Place newPlace = new Place();
                 newPlace.setGooglePlaceId(googlePlaceId);
                 newPlace.setName("분석 중...");
                 return placeRepository.saveAndFlush(newPlace);
             });
+
             processPlaceAnalysis(place.getId());
             log.info("[PlaceAnalysis] 자동 분석 완료 - googlePlaceId: {}", googlePlaceId);
-        } catch (org.springframework.dao.DataIntegrityViolationException e) {
-            // 동시 요청으로 중복 INSERT 발생 시 — 이미 다른 스레드가 처리 중이므로 무시
-            log.info("[PlaceAnalysis] 중복 분석 요청 무시 - googlePlaceId: {}", googlePlaceId);
+
+            // 분석 완료 후 캐시 무효화 → 다음 상세 조회 시 AI 태그 포함된 최신 데이터 반환
+            evictPlaceDetailCache(googlePlaceId);
+
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            log.warn("[PlaceAnalysis] 분산 락 대기 중 인터럽트 - googlePlaceId: {}", googlePlaceId);
         } catch (Exception e) {
             log.error("[PlaceAnalysis] 자동 분석 실패 - googlePlaceId: {}, error: ", googlePlaceId, e);
+            // PENDING 고착 방지: 분석 실패해도 fallback 값 저장 → analysis-status COMPLETE 전환
+            placeRepository.findByGooglePlaceId(googlePlaceId).ifPresent(p -> {
+                if (p.getSpace() == null) {
+                    p.setSpace(Space.MIX);
+                    p.setType(PlaceType.FOOD);
+                    p.setMood(Mood.LOCAL);
+                    p.setLastSyncedAt(LocalDateTime.now());
+                    placeRepository.saveAndFlush(p);
+                    log.info("[PlaceAnalysis] PENDING 고착 방지 — fallback 값 저장: {}", googlePlaceId);
+                }
+            });
+        } finally {
+            if (acquired && lock.isHeldByCurrentThread()) {
+                lock.unlock();
+            }
+        }
+    }
+
+    private void evictPlaceDetailCache(String googlePlaceId) {
+        try {
+            Cache cache = cacheManager.getCache("placeDetail");
+            if (cache != null) {
+                cache.evict(googlePlaceId);
+                log.info("[PlaceAnalysis] 캐시 무효화 완료 - googlePlaceId: {}", googlePlaceId);
+            }
+        } catch (Exception e) {
+            log.warn("[PlaceAnalysis] 캐시 무효화 실패 - googlePlaceId: {}: {}", googlePlaceId, e.getMessage());
         }
     }
 
