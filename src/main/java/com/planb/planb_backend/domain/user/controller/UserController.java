@@ -54,6 +54,22 @@ public class UserController {
         return ResponseEntity.ok(userService.updateProfile(authentication.getName(), request));
     }
 
+    @Operation(
+        summary = "Expo 푸시 토큰 등록",
+        description = "앱 실행 시 발급된 Expo Push Token을 서버에 저장합니다. 이후 날씨 알림 등 푸시 발송에 사용됩니다."
+    )
+    @PostMapping("/me/push-token")
+    public ResponseEntity<Map<String, String>> savePushToken(
+            @RequestBody Map<String, String> body,
+            Authentication authentication) {
+        String token = body.get("expoPushToken");
+        if (token == null || token.isBlank()) {
+            return ResponseEntity.badRequest().body(Map.of("message", "expoPushToken이 필요합니다."));
+        }
+        userService.savePushToken(authentication.getName(), token);
+        return ResponseEntity.ok(Map.of("message", "푸시 토큰이 저장되었습니다."));
+    }
+
     @Operation(summary = "회원 탈퇴", description = "현재 로그인한 유저의 계정을 탈퇴 처리합니다.")
     @DeleteMapping("/me")
     public ResponseEntity<Map<String, String>> withdraw(Authentication authentication) {

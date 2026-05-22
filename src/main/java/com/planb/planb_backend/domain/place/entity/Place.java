@@ -22,9 +22,10 @@ public class Place {
     @Column(name = "place_id")
     private Long id;
 
-    @Column(nullable = false)
+    @Column(nullable = false, columnDefinition = "text")
     private String name;
 
+    @Column(columnDefinition = "text")
     private String category;
 
     // --- [AI 분석 태그] ---
@@ -75,7 +76,7 @@ public class Place {
     @Column(name = "phone_number", length = 30)
     private String phoneNumber;
 
-    @Column(length = 255)
+    @Column(columnDefinition = "text")
     private String website;
 
     @Column(name = "price_level")

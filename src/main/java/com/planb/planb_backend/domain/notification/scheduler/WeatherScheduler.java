@@ -3,6 +3,7 @@ package com.planb.planb_backend.domain.notification.scheduler;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.planb.planb_backend.domain.notification.entity.Notification;
 import com.planb.planb_backend.domain.notification.repository.NotificationRepository;
+import com.planb.planb_backend.domain.notification.service.ExpoPushService;
 import com.planb.planb_backend.domain.place.entity.BusinessStatus;
 import com.planb.planb_backend.domain.place.entity.Place;
 import com.planb.planb_backend.domain.place.repository.PlaceRepository;
@@ -11,6 +12,8 @@ import com.planb.planb_backend.domain.place.service.external.WeatherApiService;
 import com.planb.planb_backend.domain.trip.entity.Space;
 import com.planb.planb_backend.domain.trip.entity.TripPlace;
 import com.planb.planb_backend.domain.trip.repository.TripPlaceRepository;
+import com.planb.planb_backend.domain.user.entity.User;
+import com.planb.planb_backend.domain.user.repository.UserRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.scheduling.annotation.Scheduled;
@@ -47,6 +50,8 @@ public class WeatherScheduler {
     private final NotificationRepository notificationRepository;
     private final GooglePlaceApiService  googlePlaceApiService;
     private final WeatherApiService      weatherApiService;
+    private final UserRepository         userRepository;
+    private final ExpoPushService        expoPushService;
 
     private static final int POP_THRESHOLD    = 70;   // 강수 확률 임계값 (%)
     private static final int RADIUS_METERS    = 8_000; // 20분 차량 반경 (400m × 20)
@@ -137,6 +142,9 @@ public class WeatherScheduler {
         notificationRepository.save(notification);
         log.info("[WeatherScheduler] 알림 저장 완료 — planId={}, userId={}",
                 planId, notification.getUserId());
+
+        // 푸시 알림 발송
+        sendPushIfTokenExists(notification, tp);
     }
 
     /**
@@ -205,6 +213,34 @@ public class WeatherScheduler {
         n.setOriginalLat(originalPlace.getLatitude());
         n.setOriginalLng(originalPlace.getLongitude());
         return n;
+    }
+
+    private void sendPushIfTokenExists(Notification notification, TripPlace tp) {
+        try {
+            userRepository.findById(notification.getUserId()).ifPresent(user -> {
+                String token = user.getExpoPushToken();
+                if (token == null || token.isBlank()) {
+                    log.info("[WeatherScheduler] 푸시 토큰 없음 — userId={}", notification.getUserId());
+                    return;
+                }
+
+                Long tripId = tp.getItinerary().getTrip().getTripId();
+                Map<String, Object> data = Map.of(
+                        "notificationId", notification.getId(),
+                        "tripId",         tripId,
+                        "tripPlaceId",    notification.getPlanId()
+                );
+
+                expoPushService.sendPush(token, notification.getTitle(), notification.getBody(), data);
+
+                notification.setPushSentAt(LocalDateTime.now(ZoneId.of("Asia/Seoul")));
+                log.info("[WeatherScheduler] 푸시 발송 완료 — userId={}, notificationId={}",
+                        notification.getUserId(), notification.getId());
+            });
+        } catch (Exception e) {
+            log.warn("[WeatherScheduler] 푸시 발송 중 오류 — userId={}, error={}",
+                    notification.getUserId(), e.getMessage());
+        }
     }
 
     private LocalDateTime toVisitDateTime(TripPlace tp) {

@@ -57,6 +57,10 @@ public class Notification {
     @Column(name = "is_read", nullable = false)
     private boolean isRead = false;
 
+    /** 푸시 발송 완료 시각 — null 이면 미발송 */
+    @Column(name = "push_sent_at")
+    private LocalDateTime pushSentAt;
+
     @Column(name = "created_at")
     private LocalDateTime createdAt;
 

@@ -64,6 +64,13 @@ public class UserService {
     }
 
     @Transactional
+    public void savePushToken(String email, String token) {
+        User user = userRepository.findByEmail(email)
+                .orElseThrow(() -> new IllegalArgumentException("사용자를 찾을 수 없습니다."));
+        user.updateExpoPushToken(token);
+    }
+
+    @Transactional
     public UpdateProfileResponse updateProfile(String email, UpdateProfileRequest request) {
         User user = userRepository.findByEmail(email)
                 .orElseThrow(() -> new IllegalArgumentException("사용자를 찾을 수 없습니다."));

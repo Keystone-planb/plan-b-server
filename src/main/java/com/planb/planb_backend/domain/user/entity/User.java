@@ -66,11 +66,18 @@ public class User {
         this.status = "WITHDRAWN";
     }
 
+    @Column(name = "expo_push_token", length = 200)
+    private String expoPushToken;
+
     public void updateNickname(String nickname) {
         this.nickname = nickname;
     }
 
     public void updatePassword(String encodedPassword) {
         this.password = encodedPassword;
+    }
+
+    public void updateExpoPushToken(String token) {
+        this.expoPushToken = token;
     }
 }
