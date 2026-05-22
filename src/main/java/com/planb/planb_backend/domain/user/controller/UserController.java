@@ -2,6 +2,7 @@ package com.planb.planb_backend.domain.user.controller;
 
 import com.planb.planb_backend.auth.AuthService;
 import com.planb.planb_backend.domain.user.dto.AuthResponse;
+import com.planb.planb_backend.domain.user.dto.SavePushTokenRequest;
 import com.planb.planb_backend.domain.user.dto.SignupRequest;
 import com.planb.planb_backend.domain.user.dto.UpdateProfileRequest;
 import com.planb.planb_backend.domain.user.dto.UpdateProfileResponse;
@@ -60,9 +61,9 @@ public class UserController {
     )
     @PostMapping("/me/push-token")
     public ResponseEntity<Map<String, String>> savePushToken(
-            @RequestBody Map<String, String> body,
+            @RequestBody SavePushTokenRequest request,
             Authentication authentication) {
-        String token = body.get("expoPushToken");
+        String token = request.getExpoPushToken();
         if (token == null || token.isBlank()) {
             return ResponseEntity.badRequest().body(Map.of("message", "expoPushToken이 필요합니다."));
         }

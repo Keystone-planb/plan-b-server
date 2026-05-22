@@ -41,6 +41,7 @@ public class NotificationService {
     private final PreferenceService      preferenceService;
     private final GooglePlaceApiService  googlePlaceApiService;
     private final RecommendationService  recommendationService;
+    private final ExpoPushService        expoPushService;
 
     private static final int NEARBY_RADIUS_METERS = 8_000;
     private static final int MAX_ALTERNATIVES     = 3;
@@ -92,12 +93,24 @@ public class NotificationService {
     }
 
     private NotificationResponse toResponse(Notification n) {
-        // 영향받는 기존 일정 장소 정보 조회
-        AlternativePlaceDto originalPlace = tripPlaceRepository.findById(n.getPlanId())
-                .map(tp -> placeRepository.findByGooglePlaceId(tp.getPlaceId()).orElse(null))
-                .filter(java.util.Objects::nonNull)
-                .map(AlternativePlaceDto::from)
-                .orElse(null);
+        // TripPlace 조회 — tripId, day, visitTime, endTime, originalPlace 모두 여기서 추출
+        var tripPlace = tripPlaceRepository.findById(n.getPlanId()).orElse(null);
+
+        Long   tripId    = null;
+        Integer day      = null;
+        String visitTime = null;
+        String endTime   = null;
+        AlternativePlaceDto originalPlace = null;
+
+        if (tripPlace != null) {
+            tripId    = tripPlace.getItinerary().getTrip().getTripId();
+            day       = tripPlace.getItinerary().getDay();
+            visitTime = tripPlace.getVisitTime();
+            endTime   = tripPlace.getEndTime();
+            originalPlace = placeRepository.findByGooglePlaceId(tripPlace.getPlaceId())
+                    .map(AlternativePlaceDto::from)
+                    .orElse(null);
+        }
 
         List<AlternativePlaceDto> alternatives;
 
@@ -116,6 +129,10 @@ public class NotificationService {
         return NotificationResponse.builder()
                 .id(n.getId())
                 .planId(n.getPlanId())
+                .tripId(tripId)
+                .day(day)
+                .visitTime(visitTime)
+                .endTime(endTime)
                 .type(n.getType())
                 .title(n.getTitle())
                 .body(n.getBody())
@@ -289,6 +306,23 @@ public class NotificationService {
         Notification saved = notificationRepository.save(n);
         log.info("[Notification][SEED] 테스트 알림 생성 완료 — notificationId={}, userId={}, tripPlaceId={}",
                 saved.getId(), userId, tripPlaceId);
+
+        // 푸시 알림 발송
+        userRepository.findById(userId).ifPresent(user -> {
+            String token = user.getExpoPushToken();
+            if (token != null && !token.isBlank()) {
+                Long tripId = tp.getItinerary().getTrip().getTripId();
+                Map<String, Object> data = Map.of(
+                        "notificationId", saved.getId(),
+                        "tripId",         tripId,
+                        "tripPlaceId",    tripPlaceId
+                );
+                expoPushService.sendPush(token, saved.getTitle(), saved.getBody(), data);
+                log.info("[Notification][SEED] 테스트 푸시 발송 — userId={}, token={}", userId, token);
+            } else {
+                log.info("[Notification][SEED] 푸시 토큰 없음 — userId={}", userId);
+            }
+        });
 
         return toResponse(saved);
     }
