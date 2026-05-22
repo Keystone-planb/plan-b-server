@@ -5,6 +5,7 @@ import com.planb.planb_backend.domain.place.repository.PlaceRepository;
 import com.planb.planb_backend.domain.place.service.external.PlaceAnalysisService;
 import com.planb.planb_backend.domain.trip.dto.*;
 import com.planb.planb_backend.domain.trip.entity.Itinerary;
+import com.planb.planb_backend.domain.trip.entity.PlaceSource;
 import com.planb.planb_backend.domain.trip.entity.TransportMode;
 import com.planb.planb_backend.domain.trip.entity.Trip;
 import com.planb.planb_backend.domain.trip.entity.TripPlace;
@@ -155,6 +156,9 @@ public class TripService {
 
         int nextOrder = itinerary.getPlaces().size() + 1;
 
+        // source 미전송 시 NORMAL 로 기본값 처리
+        PlaceSource source = request.getSource() != null ? request.getSource() : PlaceSource.NORMAL;
+
         TripPlace tripPlace = TripPlace.builder()
                 .itinerary(itinerary)
                 .placeId(request.getPlaceId())
@@ -163,6 +167,7 @@ public class TripService {
                 .endTime(request.getEndTime())
                 .visitOrder(nextOrder)
                 .memo(request.getMemo())
+                .source(source)
                 .build();
 
         AddLocationResponse saved = AddLocationResponse.from(tripPlaceRepository.save(tripPlace));

@@ -1,6 +1,7 @@
 package com.planb.planb_backend.domain.trip.dto;
 
 import com.fasterxml.jackson.annotation.JsonProperty;
+import com.planb.planb_backend.domain.trip.entity.PlaceSource;
 import jakarta.validation.constraints.NotBlank;
 import lombok.Getter;
 
@@ -20,4 +21,6 @@ public class AddLocationRequest {
     private String endTime;    // 종료 시간 "HH:mm" (선택)
 
     private String memo;       // 사용자 메모 (선택)
+
+    private PlaceSource source; // 추가 출처 (NORMAL / SOS / WEATHER / GAP), 미전송 시 null → NORMAL로 처리
 }

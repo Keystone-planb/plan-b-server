@@ -2,6 +2,7 @@ package com.planb.planb_backend.domain.trip.entity;
 
 import jakarta.persistence.*;
 import lombok.*;
+import com.planb.planb_backend.domain.trip.entity.PlaceSource;
 
 @Entity
 @Table(name = "trip_places")
@@ -37,6 +38,10 @@ public class TripPlace {
 
     @Column(length = 500)
     private String memo;        // 사용자 메모
+
+    @Enumerated(EnumType.STRING)
+    @Column(length = 20)
+    private PlaceSource source; // 추가 출처 (NORMAL / SOS / WEATHER / GAP), 기존 데이터는 null
 
     /**
      * PLAN B 대체: 장소 ID와 이름만 교체
