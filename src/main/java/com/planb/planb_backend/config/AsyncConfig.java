@@ -32,6 +32,8 @@ public class AsyncConfig {
         executor.setAwaitTerminationSeconds(30);
         // 풀/큐 초과 시 AbortPolicy(기본) 대신 조용히 폐기 — 호출 측 트랜잭션 롤백 방지
         executor.setRejectedExecutionHandler(new ThreadPoolExecutor.DiscardPolicy());
+        // HTTP 요청 스레드의 traceId를 분석 스레드로 전파
+        executor.setTaskDecorator(new MdcTaskDecorator());
         executor.initialize();
         return executor;
     }
@@ -50,6 +52,8 @@ public class AsyncConfig {
         executor.setQueueCapacity(10);
         executor.setThreadNamePrefix("sse-streaming-");
         executor.setRejectedExecutionHandler(new ThreadPoolExecutor.CallerRunsPolicy());
+        // HTTP 요청 스레드의 traceId를 스트리밍 스레드로 전파
+        executor.setTaskDecorator(new MdcTaskDecorator());
         executor.initialize();
         return executor;
     }
