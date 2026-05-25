@@ -14,6 +14,7 @@ import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
+import java.util.stream.Collectors;
 
 @Getter
 public class TripDetailResponse {
@@ -115,6 +116,8 @@ public class TripDetailResponse {
         /** DB places 테이블 기준 좌표 — 미분석 장소는 null */
         private final Double latitude;
         private final Double longitude;
+        /** 메모 목록 (생성 시각 오름차순) */
+        private final List<MemoResponse> memos;
 
         private PlaceResponse(TripPlace place, Integer transitGapMinutes, Double latitude, Double longitude) {
             this.tripPlaceId        = place.getTripPlaceId();
@@ -128,6 +131,9 @@ public class TripDetailResponse {
             this.transitGapMinutes  = transitGapMinutes;
             this.latitude           = latitude;
             this.longitude          = longitude;
+            this.memos              = place.getMemos().stream()
+                                          .map(MemoResponse::from)
+                                          .collect(Collectors.toList());
         }
 
         public static PlaceResponse from(TripPlace place, Integer transitGapMinutes, Double latitude, Double longitude) {

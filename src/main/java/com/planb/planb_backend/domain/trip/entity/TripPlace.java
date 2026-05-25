@@ -4,6 +4,9 @@ import jakarta.persistence.*;
 import lombok.*;
 import com.planb.planb_backend.domain.trip.entity.PlaceSource;
 
+import java.util.ArrayList;
+import java.util.List;
+
 @Entity
 @Table(name = "trip_places")
 @Getter
@@ -42,6 +45,11 @@ public class TripPlace {
     @Enumerated(EnumType.STRING)
     @Column(length = 20)
     private PlaceSource source; // 추가 출처 (NORMAL / SOS / WEATHER / GAP), 기존 데이터는 null
+
+    @OneToMany(mappedBy = "tripPlace", cascade = CascadeType.ALL, orphanRemoval = true, fetch = FetchType.LAZY)
+    @OrderBy("createdAt ASC")
+    @Builder.Default
+    private List<TripPlaceMemo> memos = new ArrayList<>();
 
     /**
      * PLAN B 대체: 장소 ID와 이름만 교체
