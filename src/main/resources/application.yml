@@ -29,10 +29,17 @@ spring:
 
   data:
     redis:
-      host: ${SPRING_DATA_REDIS_HOST:localhost}
-      port: ${SPRING_DATA_REDIS_PORT:6379}
+      cluster:
+        nodes: ${SPRING_DATA_REDIS_HOST:localhost}:${SPRING_DATA_REDIS_PORT:6379}
+        max-redirects: 3
       ssl:
         enabled: ${SPRING_DATA_REDIS_SSL_ENABLED:false} # AWS TLS 암호화 연결 대응
+      lettuce:
+        cluster:
+          refresh:
+            adaptive: true              # 노드 역할 변동 실시간 감지
+            period: 60000               # 60초마다 토폴로지 새로고침
+            dynamic-refresh-sources: true
 
   jpa:
     hibernate:

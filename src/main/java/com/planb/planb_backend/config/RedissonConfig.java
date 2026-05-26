@@ -29,10 +29,9 @@ public class RedissonConfig {
         Config config = new Config();
         // SSL 활성화 시 rediss://, 비활성화 시 redis://
         String scheme = sslEnabled ? "rediss" : "redis";
-        config.useSingleServer()
-                .setAddress(scheme + "://" + host + ":" + port)
-                .setConnectionMinimumIdleSize(1)
-                .setConnectionPoolSize(4);
+        // ElastiCache Serverless는 내부적으로 클러스터 구조 → useClusterServers 사용
+        config.useClusterServers()
+                .addNodeAddress(scheme + "://" + host + ":" + port);
         return Redisson.create(config);
     }
 }
