@@ -2,6 +2,7 @@ package com.planb.planb_backend.domain.trip.dto;
 
 import com.fasterxml.jackson.annotation.JsonProperty;
 import com.planb.planb_backend.domain.trip.entity.PlaceSource;
+import com.planb.planb_backend.domain.trip.entity.TransportMode;
 import jakarta.validation.constraints.NotBlank;
 import lombok.Getter;
 
@@ -23,4 +24,7 @@ public class AddLocationRequest {
     private String memo;       // 사용자 메모 (선택)
 
     private PlaceSource source; // 추가 출처 (NORMAL / SOS / WEATHER / GAP), 미전송 시 null → NORMAL로 처리
+
+    /** 이 장소 → 다음 장소 이동 수단. 미전송 시 null (Trip 기본값 폴백) */
+    private TransportMode transportMode;
 }

@@ -1,6 +1,7 @@
 package com.planb.planb_backend.domain.trip.dto;
 
 import com.planb.planb_backend.domain.trip.entity.PlaceSource;
+import com.planb.planb_backend.domain.trip.entity.TransportMode;
 import com.planb.planb_backend.domain.trip.entity.TripPlace;
 import lombok.Builder;
 import lombok.Getter;
@@ -16,7 +17,8 @@ public class AddLocationResponse {
     private String endTime;
     private int visitOrder;
     private String memo;
-    private PlaceSource source;  // 추가 출처 (NORMAL / SOS / WEATHER / GAP)
+    private PlaceSource source;       // 추가 출처 (NORMAL / SOS / WEATHER / GAP)
+    private TransportMode transportMode; // 이 장소 → 다음 장소 이동 수단
 
     public static AddLocationResponse from(TripPlace tripPlace) {
         return AddLocationResponse.builder()
@@ -28,6 +30,7 @@ public class AddLocationResponse {
                 .visitOrder(tripPlace.getVisitOrder())
                 .memo(tripPlace.getMemo())
                 .source(tripPlace.getSource())
+                .transportMode(tripPlace.getTransportMode())
                 .build();
     }
 }

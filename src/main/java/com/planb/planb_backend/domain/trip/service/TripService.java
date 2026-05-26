@@ -168,6 +168,7 @@ public class TripService {
                 .visitOrder(nextOrder)
                 .memo(request.getMemo())
                 .source(source)
+                .transportMode(request.getTransportMode())
                 .build();
 
         AddLocationResponse saved = AddLocationResponse.from(tripPlaceRepository.save(tripPlace));
@@ -220,7 +221,7 @@ public class TripService {
         // 시간 겹침 검증 (자기 자신은 제외)
         validateTimeOverlap(tripPlace.getItinerary(), request.getVisitTime(), request.getEndTime(), tripPlaceId);
 
-        tripPlace.updateSchedule(request.getVisitTime(), request.getEndTime(), request.getMemo());
+        tripPlace.updateSchedule(request.getVisitTime(), request.getEndTime(), request.getMemo(), request.getTransportMode());
         return AddLocationResponse.from(tripPlace);
     }
 

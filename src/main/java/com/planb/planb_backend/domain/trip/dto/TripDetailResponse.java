@@ -3,6 +3,7 @@ package com.planb.planb_backend.domain.trip.dto;
 import com.planb.planb_backend.domain.trip.entity.Itinerary;
 import com.planb.planb_backend.domain.trip.entity.Mood;
 import com.planb.planb_backend.domain.trip.entity.PlaceSource;
+import com.planb.planb_backend.domain.trip.entity.TransportMode;
 import com.planb.planb_backend.domain.trip.entity.Trip;
 import com.planb.planb_backend.domain.trip.entity.TripPlace;
 import lombok.Getter;
@@ -111,6 +112,8 @@ public class TripDetailResponse {
         private final String memo;
         /** 추가 출처 (NORMAL / SOS / WEATHER / GAP). 기존 데이터는 null */
         private final PlaceSource source;
+        /** 이 장소 → 다음 장소 이동 수단. null 이면 Trip 기본값 사용 */
+        private final TransportMode transportMode;
         /** 다음 장소까지의 여유 시간(분). 마지막 장소는 null */
         private final Integer transitGapMinutes;
         /** DB places 테이블 기준 좌표 — 미분석 장소는 null */
@@ -128,6 +131,7 @@ public class TripDetailResponse {
             this.visitOrder         = place.getVisitOrder();
             this.memo               = place.getMemo();
             this.source             = place.getSource();
+            this.transportMode      = place.getTransportMode();
             this.transitGapMinutes  = transitGapMinutes;
             this.latitude           = latitude;
             this.longitude          = longitude;

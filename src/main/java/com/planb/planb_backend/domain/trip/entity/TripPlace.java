@@ -3,6 +3,7 @@ package com.planb.planb_backend.domain.trip.entity;
 import jakarta.persistence.*;
 import lombok.*;
 import com.planb.planb_backend.domain.trip.entity.PlaceSource;
+import com.planb.planb_backend.domain.trip.entity.TransportMode;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -46,6 +47,11 @@ public class TripPlace {
     @Column(length = 20)
     private PlaceSource source; // 추가 출처 (NORMAL / SOS / WEATHER / GAP), 기존 데이터는 null
 
+    /** 이 장소 → 다음 장소 이동 수단. null 이면 Trip.transportMode 폴백 */
+    @Enumerated(EnumType.STRING)
+    @Column(name = "transport_mode", length = 20)
+    private TransportMode transportMode;
+
     @OneToMany(mappedBy = "tripPlace", cascade = CascadeType.ALL, orphanRemoval = true, fetch = FetchType.LAZY)
     @OrderBy("createdAt ASC")
     @Builder.Default
@@ -64,10 +70,11 @@ public class TripPlace {
         // memo 유지 (기존 메모 보존)
     }
 
-    /** 시간/메모 수정: 장소는 그대로, null 필드는 기존 값 유지 */
-    public void updateSchedule(String visitTime, String endTime, String memo) {
-        if (visitTime != null) this.visitTime = visitTime;
-        if (endTime   != null) this.endTime   = endTime;
-        if (memo      != null) this.memo      = memo;
+    /** 시간/메모/이동수단 수정: 장소는 그대로, null 필드는 기존 값 유지 */
+    public void updateSchedule(String visitTime, String endTime, String memo, TransportMode transportMode) {
+        if (visitTime      != null) this.visitTime      = visitTime;
+        if (endTime        != null) this.endTime        = endTime;
+        if (memo           != null) this.memo           = memo;
+        if (transportMode  != null) this.transportMode  = transportMode;
     }
 }
