@@ -101,6 +101,32 @@ public class PlaceAnalysisService {
         }
     }
 
+    /**
+     * POST /api/places/{placeId}/reanalyze
+     * 장소 AI 분석 데이터 초기화 후 재분석 실행
+     * - DB의 분석 결과(space/type/mood/reviewData) 초기화
+     * - placeDetail 캐시 evict
+     * - 비동기 재분석 트리거
+     */
+    public void resetAndReanalyze(String googlePlaceId) {
+        log.info("[PlaceAnalysis] 재분석 요청 - googlePlaceId: {}", googlePlaceId);
+
+        placeRepository.findByGooglePlaceId(googlePlaceId).ifPresent(place -> {
+            place.setSpace(null);
+            place.setType(null);
+            place.setMood(null);
+            place.setReviewData(null);
+            place.setLastSyncedAt(null);
+            placeRepository.saveAndFlush(place);
+            log.info("[PlaceAnalysis] 분석 데이터 초기화 완료 - googlePlaceId: {}", googlePlaceId);
+        });
+
+        evictPlaceDetailCache(googlePlaceId);
+        triggerAnalysisAsync(googlePlaceId);
+
+        log.info("[PlaceAnalysis] 재분석 트리거 완료 - googlePlaceId: {}", googlePlaceId);
+    }
+
     private void evictPlaceDetailCache(String googlePlaceId) {
         try {
             Cache cache = cacheManager.getCache("placeDetail");

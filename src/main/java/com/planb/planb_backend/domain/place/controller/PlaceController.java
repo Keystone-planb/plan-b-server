@@ -43,6 +43,19 @@ public class PlaceController {
     }
 
     /**
+     * POST /api/places/{placeId}/reanalyze
+     * 장소 AI 분석 데이터 초기화 후 재분석 실행
+     * - 기존 분석 결과(space/type/mood/reviewData) 초기화
+     * - placeDetail 캐시 evict
+     * - 백그라운드 재분석 트리거 (완료는 /analysis-status 폴링으로 확인)
+     */
+    @PostMapping("/{placeId}/reanalyze")
+    public ResponseEntity<String> reanalyze(@PathVariable String placeId) {
+        placeAnalysisService.resetAndReanalyze(placeId);
+        return ResponseEntity.ok("재분석을 시작했습니다. /api/places/" + placeId + "/analysis-status 로 완료 여부를 확인하세요.");
+    }
+
+    /**
      * GET /api/places/search?query=광화문 스타벅스
      * 장소명으로 검색
      */
