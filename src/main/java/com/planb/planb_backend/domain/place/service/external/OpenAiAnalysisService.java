@@ -33,7 +33,7 @@ public class OpenAiAnalysisService {
 
             [필독] 분석 및 응답 규칙
             데이터 기반 요약 (summaries):
-            'summaries' 내 각 플랫폼(Google, Naver) 필드는 해당 플랫폼의 리뷰 리스트에 구체적인 내용이 있을 때만 요약한다.
+            'summaries' 내 각 플랫폼(Google, Instagram, Naver) 필드는 해당 플랫폼의 리뷰 리스트에 구체적인 내용이 있을 때만 요약한다.
             리뷰 리스트가 ["데이터 없음"] 이거나 비어 있다면, 절대 내용을 조작하거나 생성하지 마라. 반드시 "데이터 부족으로 분석 불가"라고 작성한다.
 
             태그 결정 (space, type, mood) - 반드시 하나만 선택:
@@ -59,6 +59,7 @@ public class OpenAiAnalysisService {
               "review_data": "50자 이내 요약 문장",
               "summaries": {
                 "Google": "요약 또는 '데이터 부족으로 분석 불가'",
+                "Instagram": "요약 또는 '데이터 부족으로 분석 불가'",
                 "Naver": "요약 또는 '데이터 부족으로 분석 불가'"
               }
             }
@@ -98,6 +99,7 @@ public class OpenAiAnalysisService {
                 "review_data", "분석된 리뷰 정보가 없습니다.",
                 "summaries", Map.of(
                         "Google", "데이터 부족으로 분석 불가",
+                        "Instagram", "데이터 부족으로 분석 불가",
                         "Naver", "데이터 부족으로 분석 불가"
                 )
         );

@@ -31,6 +31,7 @@ public class PlaceDetailResponse {
     private String reviewSummary;   // 전체 한줄 요약
     private String googleReview;    // 구글 플랫폼 요약
     private String naverReview;     // 네이버 블로그 플랫폼 요약
+    private String instaReview;     // 인스타그램 플랫폼 요약
 
     /**
      * 구글 Places API reviews 배열의 단일 리뷰
