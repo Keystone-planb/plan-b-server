@@ -262,6 +262,24 @@ public class PlaceService {
 
         String reviewData = dbPlace.map(Place::getReviewData).orElse(null);
 
+        // reviewData가 없고 Google 리뷰가 있으면 즉시 AI 요약 생성 후 DB 저장
+        // → 첫 조회 시 요약 생성, 두 번째 조회부터는 DB 캐시 사용
+        if ((reviewData == null || reviewData.isBlank()) && result.get("reviews") != null) {
+            List<Map<String, Object>> rawGoogleReviews = (List<Map<String, Object>>) result.get("reviews");
+            if (rawGoogleReviews != null && !rawGoogleReviews.isEmpty()) {
+                List<String> reviewTexts = rawGoogleReviews.stream()
+                        .map(r -> (String) r.get("text"))
+                        .filter(t -> t != null && !t.isBlank())
+                        .collect(Collectors.toList());
+                if (!reviewTexts.isEmpty()) {
+                    String name     = (String) result.get("name");
+                    String category = dbPlace.map(Place::getCategory).orElse(null);
+                    log.info("[Place] Google 리뷰 {}건으로 즉시 AI 요약 생성 시작: {}", reviewTexts.size(), placeId);
+                    reviewData = placeAnalysisService.generateAndSaveReviewData(placeId, name, category, reviewTexts);
+                }
+            }
+        }
+
         return PlaceDetailResponse.builder()
                 .placeId(placeId)
                 .name((String) result.get("name"))
@@ -277,7 +295,6 @@ public class PlaceService {
                 .reviewSummary(extractTotalSummary(reviewData))
                 .googleReview(extractPlatformSummary(reviewData, "Google"))
                 .naverReview(extractPlatformSummary(reviewData, "Naver"))
-                .instaReview(extractPlatformSummary(reviewData, "Instagram"))
                 .build();
     }
 

@@ -247,18 +247,15 @@ public class PlaceAnalysisService {
     }
 
     /**
-     * 플랫폼별 리뷰 수집
+     * 플랫폼별 리뷰 수집 (Google + Naver)
      *
-     * [병렬 처리] Naver, Instagram은 독립적인 외부 API 호출이므로 CompletableFuture로 동시 실행
-     *   기존: Google(즉시) → Naver(~1초) → Instagram(~2초) = 순차 ~3초
-     *   변경: Google(즉시) + Naver‖Instagram 동시 실행 = 병렬 ~2초
-     *
-     * Google 리뷰는 이미 가져온 googleDetails 맵에서 추출 (추가 I/O 없음)
+     * Google 리뷰는 이미 가져온 googleDetails 맵에서 즉시 추출 (추가 I/O 없음)
+     * Naver는 비동기 HTTP 요청으로 병렬 수집
      */
     private Map<String, List<String>> collectAllReviews(Place place, Map<String, Object> googleDetails) {
-        log.info("======= [DATA COLLECTION - 병렬 시작] =======");
+        log.info("======= [DATA COLLECTION - 시작] =======");
 
-        // 1. Google 리뷰 — 이미 가져온 데이터에서 즉시 추출 (I/O 없음)
+        // 1. Google 리뷰 — 이미 가져온 데이터에서 즉시 추출
         List<String> googleTexts = new ArrayList<>();
         if (googleDetails.containsKey("reviews")) {
             List<Map<String, Object>> reviewsList = (List<Map<String, Object>>) googleDetails.get("reviews");
@@ -272,8 +269,7 @@ public class PlaceAnalysisService {
         if (googleTexts.isEmpty()) googleTexts.add("데이터 없음");
         log.info(">>>> Google 리뷰: {}건", googleTexts.contains("데이터 없음") ? 0 : googleTexts.size());
 
-        // 2. Naver — HTTP 요청
-        // Instagram API 일시 비활성화 (429 Too Many Requests 이슈)
+        // 2. Naver — 비동기 HTTP 요청
         CompletableFuture<List<String>> naverFuture = CompletableFuture.supplyAsync(() -> {
             try {
                 List<String> result = naverApiService.getNaverReviews(place.getName());
@@ -289,38 +285,62 @@ public class PlaceAnalysisService {
             }
         });
 
-        // [Instagram 일시 비활성화 — 재활성화 시 아래 주석 해제]
-        // CompletableFuture<List<String>> instaFuture = CompletableFuture.supplyAsync(() -> {
-        //     if (place.getLatitude() == null || place.getLongitude() == null) {
-        //         return List.of("데이터 없음");
-        //     }
-        //     try {
-        //         List<String> result = instaApiService.getInstagramReviews(
-        //                 place.getName(), place.getLatitude(), place.getLongitude());
-        //         if (result == null || result.isEmpty()) {
-        //             log.info(">>>> Instagram 리뷰 결과 없음");
-        //             return List.of("데이터 없음");
-        //         }
-        //         log.info(">>>> Instagram 리뷰: {}건", result.size());
-        //         return result;
-        //     } catch (Exception e) {
-        //         log.error(">>>> Instagram 수집 에러: {}", e.getMessage());
-        //         return List.of("데이터 없음");
-        //     }
-        // });
-
-        // 3. Naver 완료 대기
         List<String> naverTexts = naverFuture.join();
-        // List<String> instaTexts = instaFuture.join();  // Instagram 비활성화
-
         log.info("======= [DATA COLLECTION - 완료] =======");
 
         Map<String, List<String>> allReviews = new HashMap<>();
         allReviews.put("Google", googleTexts);
         allReviews.put("Naver", naverTexts);
-        allReviews.put("Instagram", List.of("데이터 부족으로 분석 불가"));  // Instagram 비활성화 중
-        // allReviews.put("Instagram", instaTexts);  // Instagram 재활성화 시 이 줄로 교체
         return allReviews;
+    }
+
+    /**
+     * Google 리뷰만으로 즉시 AI 요약 생성 후 DB에 저장
+     * GET /api/places/{placeId} 호출 시 reviewData가 없으면 이 메서드로 즉시 채움
+     * → 두 번째 조회부터는 DB 캐시 사용 (OpenAI 재호출 없음)
+     */
+    public String generateAndSaveReviewData(String googlePlaceId, String placeName,
+                                             String category, List<String> googleReviewTexts) {
+        try {
+            Map<String, List<String>> reviewsMap = new HashMap<>();
+            reviewsMap.put("Google", googleReviewTexts);
+            reviewsMap.put("Naver", List.of("데이터 없음"));
+
+            Map<String, Object> aiResponse = openAiAnalysisService.requestAnalysis(
+                    placeName, category != null ? category : "미분류", reviewsMap);
+
+            Map<String, Object> reviewCache = new HashMap<>();
+            reviewCache.put("platformSummaries", aiResponse.get("summaries"));
+            reviewCache.put("totalSummary", aiResponse.get("review_data"));
+
+            String reviewDataJson = objectMapper.writeValueAsString(reviewCache);
+
+            // DB 저장 — 이후 조회 시 OpenAI 재호출 방지
+            placeRepository.findByGooglePlaceId(googlePlaceId).ifPresent(p -> {
+                p.setReviewData(reviewDataJson);
+                // space/type/mood 미설정 장소라면 함께 채움
+                if (p.getSpace() == null && aiResponse.get("space") != null) {
+                    try { p.setSpace(com.planb.planb_backend.domain.trip.entity.Space.valueOf(
+                            aiResponse.get("space").toString().toUpperCase())); } catch (Exception ignored) {}
+                }
+                if (p.getType() == null && aiResponse.get("type") != null) {
+                    try { p.setType(PlaceType.valueOf(
+                            aiResponse.get("type").toString().toUpperCase())); } catch (Exception ignored) {}
+                }
+                if (p.getMood() == null && aiResponse.get("mood") != null) {
+                    try { p.setMood(Mood.valueOf(
+                            aiResponse.get("mood").toString().toUpperCase())); } catch (Exception ignored) {}
+                }
+                p.setLastSyncedAt(LocalDateTime.now());
+                placeRepository.saveAndFlush(p);
+                log.info("[PlaceAnalysis] Google 리뷰 즉시 요약 저장 완료: {}", googlePlaceId);
+            });
+
+            return reviewDataJson;
+        } catch (Exception e) {
+            log.warn("[PlaceAnalysis] Google 리뷰 즉시 요약 실패 ({}): {}", googlePlaceId, e.getMessage());
+            return null;
+        }
     }
 
     private String determineBestCategory(List<String> types) {
