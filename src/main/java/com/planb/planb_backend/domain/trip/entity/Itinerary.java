@@ -41,4 +41,8 @@ public class Itinerary {
     @OrderBy("visitOrder ASC")
     @Builder.Default
     private List<TripPlace> places = new ArrayList<>();
+
+    public void updateDate(LocalDate date) {
+        this.date = date;
+    }
 }

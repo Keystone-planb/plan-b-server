@@ -188,6 +188,50 @@ public class RecommendationController {
     }
 
     /**
+     * PATCH /api/plans/{planId}/order
+     * 장소 방문 순서(visitOrder) 변경
+     * Body: { "visitOrder": 2 }
+     */
+    @Operation(
+        summary = "장소 방문 순서 변경",
+        description = "특정 일정(planId)의 방문 순서를 변경합니다. 드래그 앤 드롭 후 호출하세요."
+    )
+    @PatchMapping("/plans/{planId}/order")
+    public ResponseEntity<Void> reorderTripPlace(
+            @PathVariable Long planId,
+            @RequestBody java.util.Map<String, Integer> body,
+            Authentication authentication) {
+        Integer newOrder = body.get("visitOrder");
+        if (newOrder == null || newOrder < 1) {
+            return ResponseEntity.badRequest().build();
+        }
+        tripService.reorderTripPlace(authentication.getName(), planId, newOrder);
+        return ResponseEntity.noContent().build();
+    }
+
+    /**
+     * PATCH /api/plans/{planId}/move
+     * 장소를 다른 일차로 이동
+     * Body: { "targetDay": 2 }
+     */
+    @Operation(
+        summary = "장소를 다른 일차로 이동",
+        description = "특정 일정(planId)을 다른 일차(targetDay)로 옮깁니다. 이동 후 방문 순서는 해당 일차의 마지막으로 자동 배정됩니다."
+    )
+    @PatchMapping("/plans/{planId}/move")
+    public ResponseEntity<Void> moveTripPlace(
+            @PathVariable Long planId,
+            @RequestBody java.util.Map<String, Integer> body,
+            Authentication authentication) {
+        Integer targetDay = body.get("targetDay");
+        if (targetDay == null || targetDay < 1) {
+            return ResponseEntity.badRequest().build();
+        }
+        tripService.moveTripPlace(authentication.getName(), planId, targetDay);
+        return ResponseEntity.noContent().build();
+    }
+
+    /**
      * DELETE /api/plans/{planId}
      * 일정(TripPlace) 단건 삭제
      */

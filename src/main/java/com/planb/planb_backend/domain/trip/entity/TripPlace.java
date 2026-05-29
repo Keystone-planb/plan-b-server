@@ -77,4 +77,15 @@ public class TripPlace {
         if (memo           != null) this.memo           = memo;
         if (transportMode  != null) this.transportMode  = transportMode;
     }
+
+    /** 방문 순서 변경 */
+    public void updateOrder(int newOrder) {
+        this.visitOrder = newOrder;
+    }
+
+    /** 다른 일차로 이동: itinerary 교체 + 순서 재배정 */
+    public void moveToItinerary(Itinerary targetItinerary, int newOrder) {
+        this.itinerary  = targetItinerary;
+        this.visitOrder = newOrder;
+    }
 }

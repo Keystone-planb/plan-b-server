@@ -123,13 +123,52 @@ public class TripService {
 
     /**
      * PATCH /api/trips/{id} — 여행 정보 부분 수정
+     * 날짜 변경 시 Itinerary(일차) 자동 조정:
+     *   - 기간 늘어나면 새 일차 추가
+     *   - 기간 줄어들면 초과 일차 삭제 (해당 일차의 장소도 함께 삭제)
+     *   - startDate 변경 시 모든 일차의 실제 날짜(date) 재계산
      */
     @Transactional
     public TripSummaryResponse updateTrip(String email, Long tripId, UpdateTripRequest request) {
         User user = findUser(email);
         Trip trip = findTripByOwner(tripId, user);
         trip.update(request.getTitle(), request.getStartDate(), request.getEndDate(), request.getTravelStyles());
+
+        if (request.getStartDate() != null || request.getEndDate() != null) {
+            adjustItineraries(trip);
+        }
+
         return TripSummaryResponse.from(trip);
+    }
+
+    /**
+     * 날짜 변경에 따른 Itinerary 자동 조정 (내부 헬퍼)
+     */
+    private void adjustItineraries(Trip trip) {
+        LocalDate newStart = trip.getStartDate();
+        LocalDate newEnd   = trip.getEndDate();
+        long newTotalDays  = ChronoUnit.DAYS.between(newStart, newEnd) + 1;
+        long currentDays   = trip.getItineraries().size();
+
+        // 기간 줄어듦 → 초과 일차 삭제 (orphanRemoval = true 로 자동 반영)
+        if (newTotalDays < currentDays) {
+            trip.getItineraries().removeIf(it -> it.getDay() > newTotalDays);
+        }
+
+        // 기간 늘어남 → 새 일차 추가
+        for (long i = currentDays + 1; i <= newTotalDays; i++) {
+            Itinerary itinerary = Itinerary.builder()
+                    .trip(trip)
+                    .day((int) i)
+                    .date(newStart.plusDays(i - 1))
+                    .build();
+            trip.getItineraries().add(itinerary);
+        }
+
+        // startDate 변경 시 모든 일차의 실제 날짜 재계산
+        for (Itinerary it : trip.getItineraries()) {
+            it.updateDate(newStart.plusDays(it.getDay() - 1));
+        }
     }
 
     /**
@@ -227,6 +266,47 @@ public class TripService {
         tripPlace.updateSchedule(request.getVisitTime(), request.getEndTime(), request.getMemo(), request.getTransportMode());
         TripPlace saved = tripPlaceRepository.save(tripPlace);
         return AddLocationResponse.from(saved);
+    }
+
+    /**
+     * PATCH /api/plans/{planId}/order — 장소 방문 순서 변경
+     */
+    @Transactional
+    public void reorderTripPlace(String email, Long tripPlaceId, int newOrder) {
+        TripPlace tripPlace = tripPlaceRepository.findByIdAndUserEmail(tripPlaceId, email)
+                .orElseThrow(() -> new IllegalArgumentException("일정을 찾을 수 없거나 접근 권한이 없습니다."));
+        tripPlace.updateOrder(newOrder);
+        tripPlaceRepository.save(tripPlace);
+    }
+
+    /**
+     * PATCH /api/plans/{planId}/move — 장소를 다른 일차로 이동
+     */
+    @Transactional
+    public void moveTripPlace(String email, Long tripPlaceId, int targetDay) {
+        TripPlace tripPlace = tripPlaceRepository.findByIdAndUserEmail(tripPlaceId, email)
+                .orElseThrow(() -> new IllegalArgumentException("일정을 찾을 수 없거나 접근 권한이 없습니다."));
+
+        Trip trip = tripPlace.getItinerary().getTrip();
+        Itinerary targetItinerary = itineraryRepository.findByTripAndDay(trip, targetDay)
+                .orElseThrow(() -> new IllegalArgumentException(targetDay + "일차 일정을 찾을 수 없습니다."));
+
+        int nextOrder = targetItinerary.getPlaces().size() + 1;
+        tripPlace.moveToItinerary(targetItinerary, nextOrder);
+        tripPlaceRepository.save(tripPlace);
+    }
+
+    /**
+     * DELETE /api/trips/{id}/days/{day}/locations — 특정 일차 장소 전체 삭제
+     * 일차(Itinerary) 자체는 유지하고 장소(TripPlace)만 전체 삭제
+     */
+    @Transactional
+    public void clearDayLocations(String email, Long tripId, int day) {
+        User user = findUser(email);
+        Trip trip = findTripByOwner(tripId, user);
+        Itinerary itinerary = itineraryRepository.findByTripAndDay(trip, day)
+                .orElseThrow(() -> new IllegalArgumentException(day + "일차 일정을 찾을 수 없습니다."));
+        itinerary.getPlaces().clear();
     }
 
     /**

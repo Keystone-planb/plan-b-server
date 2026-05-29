@@ -82,6 +82,16 @@ public class TripController {
                 .body(tripService.addLocation(authentication.getName(), id, day, request));
     }
 
+    @Operation(summary = "특정 일차 장소 전체 삭제", description = "N일차의 장소를 전부 삭제합니다. 일차(날짜)는 유지됩니다.")
+    @DeleteMapping("/{id}/days/{day}/locations")
+    public ResponseEntity<Void> clearDayLocations(
+            @PathVariable Long id,
+            @PathVariable int day,
+            Authentication authentication) {
+        tripService.clearDayLocations(authentication.getName(), id, day);
+        return ResponseEntity.noContent().build();
+    }
+
     @Operation(summary = "이동 수단 조회", description = "여행의 주 이동 수단을 조회합니다. (WALK / TRANSIT / CAR)")
     @GetMapping("/{id}/transport-mode")
     public ResponseEntity<TransportMode> getTransportMode(
