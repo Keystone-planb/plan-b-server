@@ -225,7 +225,8 @@ public class TripService {
         validateTimeOverlap(tripPlace.getItinerary(), request.getVisitTime(), request.getEndTime(), tripPlaceId);
 
         tripPlace.updateSchedule(request.getVisitTime(), request.getEndTime(), request.getMemo(), request.getTransportMode());
-        return AddLocationResponse.from(tripPlace);
+        TripPlace saved = tripPlaceRepository.save(tripPlace);
+        return AddLocationResponse.from(saved);
     }
 
     /**
