@@ -562,13 +562,17 @@ public class RecommendationService {
                         context.getCurrentLat(), context.getCurrentLng(),
                         radiusMeters, context.getRequestedCategory()
                 );
+                log.info("[SSE-S5] Google 검색 결과: {}개 (반경={}m, 카테고리={})",
+                        googleResults.size(), radiusMeters, context.getRequestedCategory());
 
                 // [S6] DB Upsert
                 List<Place> allCandidates = upsertCandidates(googleResults, excludedIds);
+                log.info("[SSE-S6] Upsert 완료: {}개 후보 (중복 제외 후)", allCandidates.size());
 
                 // [S7] 1차 퍼널 필터링 → 상위 7개
                 List<Place> top7 = applyFunnelFilter(allCandidates, context);
-                log.info("[SSE] 퍼널 선발 {}개 → 병렬 분석 시작", top7.size());
+                log.info("[SSE-S7] 퍼널 선발: {}개 / {}개 중 → 병렬 분석 시작",
+                        top7.size(), allCandidates.size());
 
                 // [S7.5] 후보 부족 시 반경 자동 확장 (동기 버전과 동일 로직)
                 if (top7.size() < 3 && context.getRadiusMinute() < 40) {
@@ -591,19 +595,26 @@ public class RecommendationService {
                 List<CompletableFuture<Void>> futures = top7.stream()
                         .map(place -> CompletableFuture
                                 .supplyAsync(() -> analyzeOnce(place), analysisExecutor)
+                                // DiscardPolicy로 task가 폐기되거나 분석이 30초 초과 시
+                                // CompletableFuture를 TimeoutException으로 강제 완료 → thenAccept 건너뛰고 exceptionally 진입
+                                // 없으면 allOf(45s) 가 만료될 때까지 PENDING → emittedCount=0 → place 이벤트 0개 버그
+                                .orTimeout(30, TimeUnit.SECONDS)
                                 .thenAccept(analyzed -> {
                                     if (done.get()) return;
                                     if (emittedCount.get() >= FINAL_TOP_N) return;
 
                                     // AI 2차 검열 (단일 장소)
                                     if (!passesAiCategoryFilter(analyzed, context)) {
-                                        log.info("[SSE-탈락] AI 카테고리 불일치: {}", analyzed.getName());
+                                        log.info("[SSE-탈락] AI 카테고리 불일치: {} (요청={}, AI={})",
+                                                analyzed.getName(), context.getRequestedCategory(),
+                                                analyzed.getType());
                                         return;
                                     }
 
                                     // [기능 6 — 틈새 추천] 영업시간 필터
                                     if (!passesOpeningHoursFilter(analyzed, context)) {
-                                        log.info("[SSE-탈락] 영업시간 불일치: {}", analyzed.getName());
+                                        log.info("[SSE-탈락] 영업시간 불일치: {} (mustBeOpenAt={})",
+                                                analyzed.getName(), context.getMustBeOpenAt());
                                         return;
                                     }
 
@@ -617,7 +628,15 @@ public class RecommendationService {
                                     }
                                 })
                                 .exceptionally(ex -> {
-                                    log.warn("[SSE] 단일 장소 분석 실패: {}", ex.getMessage());
+                                    Throwable cause = ex.getCause() != null ? ex.getCause() : ex;
+                                    if (cause instanceof TimeoutException) {
+                                        log.warn("[SSE] 분석 task 폐기 또는 30초 초과 (장소={}): " +
+                                                "analysisExecutor DiscardPolicy 또는 분석 지연 — place 이벤트 미전송",
+                                                place.getName());
+                                    } else {
+                                        log.warn("[SSE] 단일 장소 분석 실패 ({}): {}",
+                                                place.getName(), cause.getMessage());
+                                    }
                                     return null;
                                 }))
                         .collect(Collectors.toList());
