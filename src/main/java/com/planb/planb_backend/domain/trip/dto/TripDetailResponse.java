@@ -3,6 +3,7 @@ package com.planb.planb_backend.domain.trip.dto;
 import com.planb.planb_backend.domain.trip.entity.Itinerary;
 import com.planb.planb_backend.domain.trip.entity.Mood;
 import com.planb.planb_backend.domain.trip.entity.PlaceSource;
+import com.planb.planb_backend.domain.trip.entity.PlaceType;
 import com.planb.planb_backend.domain.trip.entity.TransportMode;
 import com.planb.planb_backend.domain.trip.entity.Trip;
 import com.planb.planb_backend.domain.trip.entity.TripPlace;
@@ -27,19 +28,22 @@ public class TripDetailResponse {
     private final List<Mood> travelStyles;
     private final List<ItineraryResponse> itineraries;
 
-    private TripDetailResponse(Trip trip, Map<String, double[]> coordMap) {
+    /** DB places 테이블에서 배치 조회한 장소 메타데이터 (좌표 + 카테고리 + AI 분석 타입) */
+    public record PlaceInfo(Double latitude, Double longitude, String category, PlaceType type) {}
+
+    private TripDetailResponse(Trip trip, Map<String, PlaceInfo> placeInfoMap) {
         this.tripId       = trip.getTripId();
         this.title        = trip.getTitle();
         this.startDate    = trip.getStartDate();
         this.endDate      = trip.getEndDate();
         this.travelStyles = trip.getTravelStyles();
         this.itineraries  = trip.getItineraries().stream()
-                .map(i -> ItineraryResponse.from(i, coordMap))
+                .map(i -> ItineraryResponse.from(i, placeInfoMap))
                 .toList();
     }
 
-    public static TripDetailResponse from(Trip trip, Map<String, double[]> coordMap) {
-        return new TripDetailResponse(trip, coordMap);
+    public static TripDetailResponse from(Trip trip, Map<String, PlaceInfo> placeInfoMap) {
+        return new TripDetailResponse(trip, placeInfoMap);
     }
 
     // ── 일정(Itinerary) 응답 ───────────────────────────────────────
@@ -50,22 +54,22 @@ public class TripDetailResponse {
         private final LocalDate date;
         private final List<PlaceResponse> places;
 
-        private ItineraryResponse(Itinerary itinerary, Map<String, double[]> coordMap) {
+        private ItineraryResponse(Itinerary itinerary, Map<String, PlaceInfo> placeInfoMap) {
             this.itineraryId = itinerary.getItineraryId();
             this.day         = itinerary.getDay();
             this.date        = itinerary.getDate();
-            this.places      = buildPlaceResponses(itinerary, coordMap);
+            this.places      = buildPlaceResponses(itinerary, placeInfoMap);
         }
 
-        public static ItineraryResponse from(Itinerary itinerary, Map<String, double[]> coordMap) {
-            return new ItineraryResponse(itinerary, coordMap);
+        public static ItineraryResponse from(Itinerary itinerary, Map<String, PlaceInfo> placeInfoMap) {
+            return new ItineraryResponse(itinerary, placeInfoMap);
         }
 
         /**
          * visitTime 기준 오름차순 정렬 후,
          * 이전 장소 endTime ↔ 다음 장소 visitTime 사이의 여유 시간(분)을 계산해서 주입
          */
-        private static List<PlaceResponse> buildPlaceResponses(Itinerary itinerary, Map<String, double[]> coordMap) {
+        private static List<PlaceResponse> buildPlaceResponses(Itinerary itinerary, Map<String, PlaceInfo> placeInfoMap) {
             // visitTime null이면 맨 뒤로 정렬
             List<TripPlace> sorted = new ArrayList<>(itinerary.getPlaces());
             sorted.sort(Comparator.comparing(
@@ -91,10 +95,12 @@ public class TripDetailResponse {
                     }
                 }
 
-                double[] coords = coordMap.getOrDefault(current.getPlaceId(), null);
-                Double lat = coords != null ? coords[0] : null;
-                Double lng = coords != null ? coords[1] : null;
-                result.add(PlaceResponse.from(current, gap, lat, lng));
+                PlaceInfo info = placeInfoMap.getOrDefault(current.getPlaceId(), null);
+                Double lat      = info != null ? info.latitude()  : null;
+                Double lng      = info != null ? info.longitude() : null;
+                String category = info != null ? info.category()  : null;
+                PlaceType type  = info != null ? info.type()      : null;
+                result.add(PlaceResponse.from(current, gap, lat, lng, category, type));
             }
             return result;
         }
@@ -119,10 +125,16 @@ public class TripDetailResponse {
         /** DB places 테이블 기준 좌표 — 미분석 장소는 null */
         private final Double latitude;
         private final Double longitude;
+        /** Google raw 카테고리 (예: "cafe", "museum"). AI 미분석 장소도 포함 */
+        private final String category;
+        /** AI 분석 완료 장소의 PlaceType (FOOD / CAFE / SIGHTS / PARK / MARKET). 미분석 시 null */
+        private final PlaceType type;
         /** 메모 목록 (생성 시각 오름차순) */
         private final List<MemoResponse> memos;
 
-        private PlaceResponse(TripPlace place, Integer transitGapMinutes, Double latitude, Double longitude) {
+        private PlaceResponse(TripPlace place, Integer transitGapMinutes,
+                              Double latitude, Double longitude,
+                              String category, PlaceType type) {
             this.tripPlaceId        = place.getTripPlaceId();
             this.placeId            = place.getPlaceId();
             this.name               = place.getName();
@@ -135,13 +147,17 @@ public class TripDetailResponse {
             this.transitGapMinutes  = transitGapMinutes;
             this.latitude           = latitude;
             this.longitude          = longitude;
+            this.category           = category;
+            this.type               = type;
             this.memos              = place.getMemos().stream()
                                           .map(MemoResponse::from)
                                           .collect(Collectors.toList());
         }
 
-        public static PlaceResponse from(TripPlace place, Integer transitGapMinutes, Double latitude, Double longitude) {
-            return new PlaceResponse(place, transitGapMinutes, latitude, longitude);
+        public static PlaceResponse from(TripPlace place, Integer transitGapMinutes,
+                                         Double latitude, Double longitude,
+                                         String category, PlaceType type) {
+            return new PlaceResponse(place, transitGapMinutes, latitude, longitude, category, type);
         }
     }
 }

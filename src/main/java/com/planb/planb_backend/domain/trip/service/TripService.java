@@ -105,17 +105,20 @@ public class TripService {
                 .distinct()
                 .collect(Collectors.toList());
 
-        // DB에서 좌표 배치 조회 → coordMap 빌드
-        Map<String, double[]> coordMap = new HashMap<>();
+        // DB에서 좌표·카테고리·타입 배치 조회 → placeInfoMap 빌드
+        Map<String, TripDetailResponse.PlaceInfo> placeInfoMap = new HashMap<>();
         if (!placeIds.isEmpty()) {
             placeRepository.findAllByGooglePlaceIdIn(placeIds).forEach(p -> {
-                if (p.getLatitude() != null && p.getLongitude() != null) {
-                    coordMap.put(p.getGooglePlaceId(), new double[]{p.getLatitude(), p.getLongitude()});
-                }
+                placeInfoMap.put(p.getGooglePlaceId(), new TripDetailResponse.PlaceInfo(
+                        p.getLatitude(),
+                        p.getLongitude(),
+                        p.getCategory(),
+                        p.getType()
+                ));
             });
         }
 
-        return TripDetailResponse.from(trip, coordMap);
+        return TripDetailResponse.from(trip, placeInfoMap);
     }
 
     /**
