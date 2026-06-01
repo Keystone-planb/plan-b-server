@@ -122,6 +122,35 @@ public class TripService {
     }
 
     /**
+     * GET /api/trips/{id}/days/{day} — 특정 일차 단건 조회
+     */
+    public TripDetailResponse.ItineraryResponse getDayDetail(String email, Long tripId, int day) {
+        User user = findUser(email);
+        Trip trip = findTripByOwner(tripId, user);
+
+        Itinerary itinerary = itineraryRepository.findByTripAndDay(trip, day)
+                .orElseThrow(() -> new IllegalArgumentException(day + "일차 일정을 찾을 수 없습니다."));
+
+        // 해당 일차 장소의 좌표·카테고리·타입 배치 조회
+        List<String> placeIds = itinerary.getPlaces().stream()
+                .map(TripPlace::getPlaceId)
+                .filter(id -> id != null && !id.isBlank())
+                .distinct()
+                .collect(Collectors.toList());
+
+        Map<String, TripDetailResponse.PlaceInfo> placeInfoMap = new HashMap<>();
+        if (!placeIds.isEmpty()) {
+            placeRepository.findAllByGooglePlaceIdIn(placeIds).forEach(p ->
+                placeInfoMap.put(p.getGooglePlaceId(), new TripDetailResponse.PlaceInfo(
+                        p.getLatitude(), p.getLongitude(), p.getCategory(), p.getType()
+                ))
+            );
+        }
+
+        return TripDetailResponse.ItineraryResponse.from(itinerary, placeInfoMap);
+    }
+
+    /**
      * PATCH /api/trips/{id} — 여행 정보 부분 수정
      * 날짜 변경 시 Itinerary(일차) 자동 조정:
      *   - 기간 늘어나면 새 일차 추가

@@ -1,6 +1,7 @@
 package com.planb.planb_backend.domain.trip.controller;
 
 import com.planb.planb_backend.domain.trip.dto.*;
+import com.planb.planb_backend.domain.trip.dto.TripDetailResponse;
 import com.planb.planb_backend.domain.trip.entity.TransportMode;
 import com.planb.planb_backend.domain.trip.service.TripService;
 import io.swagger.v3.oas.annotations.Operation;
@@ -80,6 +81,15 @@ public class TripController {
             Authentication authentication) {
         return ResponseEntity.status(HttpStatus.CREATED)
                 .body(tripService.addLocation(authentication.getName(), id, day, request));
+    }
+
+    @Operation(summary = "특정 일차 조회", description = "N일차의 장소 목록을 조회합니다.")
+    @GetMapping("/{id}/days/{day}")
+    public ResponseEntity<TripDetailResponse.ItineraryResponse> getDayDetail(
+            @PathVariable Long id,
+            @PathVariable int day,
+            Authentication authentication) {
+        return ResponseEntity.ok(tripService.getDayDetail(authentication.getName(), id, day));
     }
 
     @Operation(summary = "특정 일차 장소 전체 삭제", description = "N일차의 장소를 전부 삭제합니다. 일차(날짜)는 유지됩니다.")
