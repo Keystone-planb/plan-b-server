@@ -265,9 +265,13 @@ async function apiFetch(url, options = {}) {
   const res = await fetch(url, { ...options, headers });
 
   if (res.status === 401) {
-    // 토큰 만료 → 로그아웃
     handleLogout();
     throw new Error('세션이 만료되었습니다. 다시 로그인해 주세요.');
+  }
+
+  if (res.status === 403) {
+    handleLogout();
+    throw new Error('관리자 권한이 없습니다.');
   }
 
   if (!res.ok) {
