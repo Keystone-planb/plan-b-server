@@ -52,6 +52,13 @@ public class AdminController {
         return ResponseEntity.ok(adminService.getPlacesByTrip(tripId));
     }
 
+    @Operation(summary = "일정 장소 단건 강제 삭제", description = "연결된 알림 → TripPlaceMemo 순으로 안전하게 삭제합니다.")
+    @DeleteMapping("/trip-places/{tripPlaceId}")
+    public ResponseEntity<Void> deleteTripPlace(@PathVariable Long tripPlaceId) {
+        adminService.deleteTripPlace(tripPlaceId);
+        return ResponseEntity.noContent().build();
+    }
+
     // ── 장소 관리 ─────────────────────────────────────────────────────────
 
     @Operation(summary = "DB 장소 전체 목록 조회 (분석 상태 포함)")

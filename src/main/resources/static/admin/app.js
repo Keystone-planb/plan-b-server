@@ -9,8 +9,9 @@ let refreshToken  = localStorage.getItem('admin_refresh')  || null;
 let allUsers   = [];   // GET /api/admin/users
 let allPlaces  = [];   // GET /api/admin/places
 
-let currentUserId   = null;
-let currentTripId   = null;
+let currentUserId    = null;
+let currentTripId    = null;
+let currentTripTitle = null;
 
 const pollingTimers = {};  // { googlePlaceId: intervalId }
 
@@ -256,7 +257,8 @@ function closeTripsPanel() {
 // ── 여행 장소 패널 ─────────────────────────────────────────────────────────
 
 async function showTripPlaces(tripId, title) {
-  currentTripId = tripId;
+  currentTripId    = tripId;
+  currentTripTitle = title;
   show('trip-places-panel');
   document.getElementById('trip-places-title').textContent = `${title}의 장소`;
   show('trip-places-loading'); hide('trip-places-table-wrap'); hide('trip-places-empty');
@@ -293,21 +295,39 @@ function renderTripPlacesTable(places, title) {
       <td class="px-4 py-3" id="tpr-status-${sid}">
         <span class="bg-gray-100 text-gray-400 text-xs px-2 py-0.5 rounded-full">확인 안 됨</span>
       </td>
-      <td class="px-4 py-3">
+      <td class="px-4 py-3 flex items-center gap-2">
         ${p.googlePlaceId
           ? `<button id="tpr-btn-${sid}"
                      onclick="triggerReanalyze('${escJs(p.googlePlaceId)}', '${escJs(p.name)}', 'tpr')"
                      class="bg-amber-500 hover:bg-amber-600 text-white text-xs px-3 py-1 rounded transition">
                재분석
              </button>`
-          : '<span class="text-gray-300 text-xs">—</span>'}
+          : ''}
+        <button onclick="deleteTripPlace(${p.tripPlaceId}, '${escJs(p.name)}')"
+                class="bg-red-500 hover:bg-red-600 text-white text-xs px-3 py-1 rounded transition">
+          장소 삭제
+        </button>
       </td>
     </tr>`;
   }).join('');
 }
 
+async function deleteTripPlace(tripPlaceId, name) {
+  if (!confirm(`⚠️ [장소 삭제]\n\n장소명: ${name}\n\n이 장소와 연결된 메모가 함께 삭제됩니다.\n정말 삭제하시겠습니까?`)) return;
+  try {
+    await apiFetch(`/api/admin/trip-places/${tripPlaceId}`, { method: 'DELETE' });
+    // 삭제 후 현재 여행 장소 목록 즉시 새로고침
+    if (currentTripId && currentTripTitle) {
+      await showTripPlaces(currentTripId, currentTripTitle);
+    }
+  } catch (ex) {
+    alert('삭제 실패: ' + ex.message);
+  }
+}
+
 function closeTripPlacesPanel() {
-  currentTripId = null;
+  currentTripId    = null;
+  currentTripTitle = null;
   hide('trip-places-panel');
 }
 
@@ -456,7 +476,8 @@ async function apiFetch(url, opts = {}) {
     throw new Error(t || `HTTP ${res.status}`);
   }
   const t = await res.text();
-  return t ? JSON.parse(t) : null;
+  if (!t) return null;
+  try { return JSON.parse(t); } catch { return t; }  // 일반 String 응답(재분석 등) 안전 처리
 }
 
 // ════════════════════════════════════════════════════════════════════════════

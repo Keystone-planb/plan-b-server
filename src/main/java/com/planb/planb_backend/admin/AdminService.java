@@ -117,6 +117,27 @@ public class AdminService {
         log.info("[Admin] 여행 삭제 완료: tripId={}", tripId);
     }
 
+    // ── TripPlace 단건 삭제 ─────────────────────────────────────────────────
+    /**
+     * 안전 삭제 순서:
+     * 1. Notification(planId = tripPlaceId) 먼저 삭제
+     * 2. TripPlace 삭제 → JPA CascadeType.ALL + orphanRemoval → TripPlaceMemo 자동 삭제
+     */
+    @Transactional
+    public void deleteTripPlace(Long tripPlaceId) {
+        TripPlace tripPlace = tripPlaceRepository.findById(tripPlaceId)
+                .orElseThrow(() -> new IllegalArgumentException("장소를 찾을 수 없습니다: " + tripPlaceId));
+
+        log.info("[Admin] 장소 삭제 시작: tripPlaceId={}, name={}", tripPlaceId, tripPlace.getName());
+
+        // 1. 이 장소를 참조하는 알림 먼저 삭제
+        adminNotificationRepository.deleteByPlanIdIn(List.of(tripPlaceId));
+
+        // 2. TripPlace 삭제 (JPA Cascade ALL + orphanRemoval → TripPlaceMemo 자동 삭제)
+        tripPlaceRepository.delete(tripPlace);
+        log.info("[Admin] 장소 삭제 완료: tripPlaceId={}", tripPlaceId);
+    }
+
     // ── 특정 여행의 장소 목록 ────────────────────────────────────────────────
     @Transactional(readOnly = true)
     public List<AdminTripPlaceDto> getPlacesByTrip(Long tripId) {
