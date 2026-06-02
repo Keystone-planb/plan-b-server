@@ -1,0 +1,95 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org" lang="ko">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Plan B 이메일 인증</title>
+</head>
+<body style="margin:0; padding:0; background-color:#f4f6f9; font-family:'Apple SD Gothic Neo', 'Malgun Gothic', Arial, sans-serif;">
+
+  <table width="100%" cellpadding="0" cellspacing="0" style="background-color:#f4f6f9; padding: 40px 0;">
+    <tr>
+      <td align="center">
+
+        <!-- 카드 -->
+        <table width="480" cellpadding="0" cellspacing="0"
+               style="background-color:#ffffff; border-radius:16px; overflow:hidden;
+                      box-shadow:0 4px 24px rgba(0,0,0,0.08); max-width:480px; width:100%;">
+
+          <!-- 헤더 -->
+          <tr>
+            <td align="center"
+                style="background: linear-gradient(135deg, #4F46E5 0%, #7C3AED 100%);
+                       padding: 36px 40px 32px;">
+              <div style="font-size:28px; font-weight:900; color:#ffffff; letter-spacing:-0.5px;">
+                Plan B
+              </div>
+              <div style="font-size:13px; color:rgba(255,255,255,0.75); margin-top:4px; letter-spacing:0.5px;">
+                이메일 인증
+              </div>
+            </td>
+          </tr>
+
+          <!-- 본문 -->
+          <tr>
+            <td style="padding: 40px 40px 32px;">
+              <p style="margin:0 0 8px; font-size:15px; color:#374151; line-height:1.6;">
+                안녕하세요!<br/>
+                <strong style="color:#111827;">Plan B</strong> 서비스 이용을 위한 이메일 인증 코드입니다.
+              </p>
+              <p style="margin:0 0 28px; font-size:13px; color:#6B7280; line-height:1.6;">
+                아래 6자리 코드를 입력창에 입력해 주세요.
+              </p>
+
+              <!-- 인증번호 박스 -->
+              <div style="background-color:#F5F3FF; border:2px solid #DDD6FE;
+                          border-radius:12px; padding:28px 20px; text-align:center; margin-bottom:28px;">
+                <div style="font-size:11px; font-weight:600; color:#7C3AED;
+                            letter-spacing:2px; text-transform:uppercase; margin-bottom:12px;">
+                  인증 코드
+                </div>
+                <div th:text="${code}"
+                     style="font-size:42px; font-weight:900; color:#4F46E5;
+                            letter-spacing:12px; font-variant-numeric:tabular-nums;">
+                  000000
+                </div>
+              </div>
+
+              <!-- 유효시간 안내 -->
+              <table width="100%" cellpadding="0" cellspacing="0"
+                     style="background-color:#FFF7ED; border-radius:8px; margin-bottom:24px;">
+                <tr>
+                  <td style="padding:14px 18px;">
+                    <span style="font-size:13px; color:#C2410C;">⏱</span>
+                    <span style="font-size:13px; color:#C2410C; margin-left:6px;">
+                      이 코드는 <strong>3분</strong> 이내에 입력해야 합니다.
+                    </span>
+                  </td>
+                </tr>
+              </table>
+
+              <p style="margin:0; font-size:12px; color:#9CA3AF; line-height:1.7;">
+                본인이 요청하지 않은 메일이라면 무시하셔도 됩니다.<br/>
+                계정 보안을 위해 인증 코드를 타인과 공유하지 마세요.
+              </p>
+            </td>
+          </tr>
+
+          <!-- 푸터 -->
+          <tr>
+            <td style="background-color:#F9FAFB; border-top:1px solid #F3F4F6;
+                       padding:20px 40px; text-align:center;">
+              <p style="margin:0; font-size:11px; color:#9CA3AF; line-height:1.6;">
+                © 2025 Plan B. All rights reserved.<br/>
+                이 메일은 발신 전용이므로 회신하지 마세요.
+              </p>
+            </td>
+          </tr>
+
+        </table>
+      </td>
+    </tr>
+  </table>
+
+</body>
+</html>
