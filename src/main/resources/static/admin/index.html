@@ -225,18 +225,29 @@
         <div id="p-loading" class="py-10 text-center text-gray-400 text-xs">불러오는 중...</div>
         <div id="p-table-wrap" class="overflow-x-auto hidden">
           <table class="w-full">
-            <thead class="bg-gray-50 text-gray-400 text-xs uppercase">
+            <thead class="bg-gray-50 text-gray-400 text-xs uppercase sticky top-0 z-10">
               <tr>
-                <th class="px-4 py-3 text-left">ID</th>
-                <th class="px-4 py-3 text-left">장소명</th>
-                <th class="px-4 py-3 text-left">주소</th>
-                <th class="px-4 py-3 text-left">타입</th>
-                <th class="px-4 py-3 text-left">스페이스</th>
-                <th class="px-4 py-3 text-left">분위기</th>
-                <th class="px-4 py-3 text-left">평점</th>
-                <th class="px-4 py-3 text-left">마지막 분석</th>
-                <th class="px-4 py-3 text-left">상태</th>
-                <th class="px-4 py-3 text-left">액션</th>
+                <th onclick="sortPlaces('id')"              class="px-3 py-3 text-left cursor-pointer select-none hover:bg-gray-100 whitespace-nowrap">ID <span id="ps-id" class="text-gray-300">⇅</span></th>
+                <th onclick="sortPlaces('name')"            class="px-3 py-3 text-left cursor-pointer select-none hover:bg-gray-100 whitespace-nowrap">장소명 <span id="ps-name" class="text-gray-300">⇅</span></th>
+                <th class="px-3 py-3 text-left whitespace-nowrap">Google Place ID</th>
+                <th class="px-3 py-3 text-left whitespace-nowrap">주소</th>
+                <th class="px-3 py-3 text-left whitespace-nowrap">카테고리</th>
+                <th onclick="sortPlaces('type')"            class="px-3 py-3 text-left cursor-pointer select-none hover:bg-gray-100 whitespace-nowrap">타입 <span id="ps-type" class="text-gray-300">⇅</span></th>
+                <th onclick="sortPlaces('space')"           class="px-3 py-3 text-left cursor-pointer select-none hover:bg-gray-100 whitespace-nowrap">스페이스 <span id="ps-space" class="text-gray-300">⇅</span></th>
+                <th onclick="sortPlaces('mood')"            class="px-3 py-3 text-left cursor-pointer select-none hover:bg-gray-100 whitespace-nowrap">분위기 <span id="ps-mood" class="text-gray-300">⇅</span></th>
+                <th class="px-3 py-3 text-left whitespace-nowrap">위도</th>
+                <th class="px-3 py-3 text-left whitespace-nowrap">경도</th>
+                <th onclick="sortPlaces('rating')"          class="px-3 py-3 text-left cursor-pointer select-none hover:bg-gray-100 whitespace-nowrap">평점 <span id="ps-rating" class="text-gray-300">⇅</span></th>
+                <th onclick="sortPlaces('userRatingsTotal')" class="px-3 py-3 text-left cursor-pointer select-none hover:bg-gray-100 whitespace-nowrap">리뷰수 <span id="ps-userRatingsTotal" class="text-gray-300">⇅</span></th>
+                <th onclick="sortPlaces('priceLevel')"      class="px-3 py-3 text-left cursor-pointer select-none hover:bg-gray-100 whitespace-nowrap">가격 <span id="ps-priceLevel" class="text-gray-300">⇅</span></th>
+                <th onclick="sortPlaces('businessStatus')"  class="px-3 py-3 text-left cursor-pointer select-none hover:bg-gray-100 whitespace-nowrap">영업상태 <span id="ps-businessStatus" class="text-gray-300">⇅</span></th>
+                <th class="px-3 py-3 text-left whitespace-nowrap">전화번호</th>
+                <th class="px-3 py-3 text-left whitespace-nowrap">웹사이트</th>
+                <th class="px-3 py-3 text-left whitespace-nowrap">영업시간</th>
+                <th class="px-3 py-3 text-left whitespace-nowrap">리뷰 요약</th>
+                <th onclick="sortPlaces('lastSyncedAt')"    class="px-3 py-3 text-left cursor-pointer select-none hover:bg-gray-100 whitespace-nowrap">마지막 분석 <span id="ps-lastSyncedAt" class="text-gray-300">⇅</span></th>
+                <th onclick="sortPlaces('analysisStatus')"  class="px-3 py-3 text-left cursor-pointer select-none hover:bg-gray-100 whitespace-nowrap">상태 <span id="ps-analysisStatus" class="text-gray-300">⇅</span></th>
+                <th class="px-3 py-3 text-left whitespace-nowrap">액션</th>
               </tr>
             </thead>
             <tbody id="p-tbody" class="divide-y divide-gray-100"></tbody>

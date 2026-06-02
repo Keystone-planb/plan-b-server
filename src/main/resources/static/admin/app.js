@@ -18,10 +18,16 @@ let tripPlacesSortCol    = 'day';
 let tripPlacesSortDir    = 'asc';
 
 const tripPlaceJsonData = {};    // { tripPlaceId: { openingHours, reviewData } }
+const placeJsonData     = {};    // { googlePlaceId: { openingHours, reviewData } }
 const pollingTimers     = {};    // { googlePlaceId: intervalId }
 
-// 정렬 가능한 컬럼 목록 (tripPlaceId 추가)
+// 여행 장소 정렬 컬럼 목록
 const SORT_COLS = ['tripPlaceId','day','visitOrder','name','visitTime','source','transportMode','placeType','rating'];
+
+// 장소 관리 탭 정렬 상태
+let placesSortCol = 'id';
+let placesSortDir = 'asc';
+const PLACE_SORT_COLS = ['id','name','type','space','mood','rating','userRatingsTotal','priceLevel','businessStatus','lastSyncedAt','analysisStatus'];
 
 // ════════════════════════════════════════════════════════════════════════════
 // 초기 진입
@@ -493,6 +499,8 @@ function closeTripPlacesPanel() {
 // ════════════════════════════════════════════════════════════════════════════
 async function loadDbPlaces() {
   show('p-loading'); hide('p-table-wrap'); hide('p-empty');
+  placesSortCol = 'id';
+  placesSortDir = 'asc';
   try {
     allPlaces = await apiFetch('/api/admin/places');
     updatePlaceStats(allPlaces);
@@ -511,7 +519,7 @@ function applyPlaceFilter() {
     (!status || p.analysisStatus === status) &&
     (!type   || p.type === type)
   );
-  renderDbPlacesTable(f);
+  renderSortedDbPlaces(f);
   document.getElementById('p-count').textContent = `총 ${f.length}개 (전체 ${allPlaces.length}개)`;
 }
 
@@ -522,6 +530,43 @@ function updatePlaceStats(places) {
   document.getElementById('p-stat-pending').textContent  = places.length - complete;
 }
 
+// ── 장소 관리 정렬 ─────────────────────────────────────────────────────────
+function sortPlaces(col) {
+  if (placesSortCol === col) {
+    placesSortDir = placesSortDir === 'asc' ? 'desc' : 'asc';
+  } else {
+    placesSortCol = col;
+    placesSortDir = 'asc';
+  }
+  applyPlaceFilter();
+}
+
+function renderSortedDbPlaces(filtered) {
+  const sorted = [...filtered].sort((a, b) => {
+    const av = a[placesSortCol] ?? '';
+    const bv = b[placesSortCol] ?? '';
+    const cmp = (typeof av === 'number' && typeof bv === 'number')
+      ? av - bv
+      : String(av).localeCompare(String(bv), 'ko');
+    return placesSortDir === 'asc' ? cmp : -cmp;
+  });
+
+  // 정렬 아이콘 업데이트
+  PLACE_SORT_COLS.forEach(col => {
+    const el = document.getElementById(`ps-${col}`);
+    if (!el) return;
+    if (col === placesSortCol) {
+      el.textContent = placesSortDir === 'asc' ? '▲' : '▼';
+      el.className   = 'text-indigo-500';
+    } else {
+      el.textContent = '⇅';
+      el.className   = 'text-gray-300';
+    }
+  });
+
+  renderDbPlacesTable(sorted);
+}
+
 function renderDbPlacesTable(places) {
   hide('p-loading');
   if (places.length === 0) { show('p-empty'); hide('p-table-wrap'); return; }
@@ -529,35 +574,144 @@ function renderDbPlacesTable(places) {
 
   document.getElementById('p-tbody').innerHTML = places.map(p => {
     const sid = safe(p.googlePlaceId);
+
+    // JSONB 데이터 전역 Map 보관
+    placeJsonData[sid] = {
+      openingHours: p.openingHours,
+      reviewData:   p.reviewData
+    };
+
     const statusBadge = p.analysisStatus === 'COMPLETE'
       ? `<span class="bg-green-100 text-green-700 text-xs font-semibold px-2 py-0.5 rounded-full">완료</span>`
       : `<span id="p-badge-${sid}" class="bg-yellow-100 text-yellow-700 text-xs font-semibold px-2 py-0.5 rounded-full">미완료</span>`;
 
+    const businessBadge = (() => {
+      const map = {
+        OPERATIONAL:        'bg-green-100 text-green-700',
+        CLOSED_TEMPORARILY: 'bg-yellow-100 text-yellow-700',
+        CLOSED_PERMANENTLY: 'bg-red-100 text-red-700'
+      };
+      if (!p.businessStatus) return '<span class="text-gray-300 text-xs">—</span>';
+      const cls = map[p.businessStatus] || 'bg-gray-100 text-gray-500';
+      return `<span class="${cls} text-xs px-2 py-0.5 rounded-full">${p.businessStatus}</span>`;
+    })();
+
+    const priceBadge = p.priceLevel != null
+      ? `<span class="text-xs text-gray-600">${'₩'.repeat(p.priceLevel + 1)}</span>`
+      : '<span class="text-gray-300 text-xs">—</span>';
+
+    const reviewSummary = extractReviewSummary(p.reviewData);
+
     return `
     <tr class="hover:bg-gray-50 transition">
-      <td class="px-4 py-3 text-gray-400">${p.id ?? '—'}</td>
-      <td class="px-4 py-3 font-medium max-w-[160px]">
+      <!-- ID -->
+      <td class="px-3 py-3 text-gray-400 font-mono text-xs whitespace-nowrap">${p.id ?? '—'}</td>
+      <!-- 장소명 -->
+      <td class="px-3 py-3 font-medium max-w-[160px]">
         <div class="truncate" title="${escHtml(p.name)}">${escHtml(p.name)}</div>
-        <div class="text-gray-400 text-xs truncate mt-0.5" title="${escHtml(p.googlePlaceId)}">${escHtml(p.googlePlaceId || '')}</div>
       </td>
-      <td class="px-4 py-3 text-gray-500 text-xs max-w-[180px] truncate" title="${escHtml(p.address)}">${escHtml(p.address || '—')}</td>
-      <td class="px-4 py-3">${p.type  ? `<span class="bg-indigo-100 text-indigo-700 text-xs px-2 py-0.5 rounded-full">${p.type}</span>`  : '<span class="text-gray-300">—</span>'}</td>
-      <td class="px-4 py-3">${p.space ? `<span class="bg-purple-100 text-purple-700 text-xs px-2 py-0.5 rounded-full">${p.space}</span>` : '<span class="text-gray-300">—</span>'}</td>
-      <td class="px-4 py-3">${p.mood  ? `<span class="bg-pink-100 text-pink-700 text-xs px-2 py-0.5 rounded-full">${p.mood}</span>`   : '<span class="text-gray-300">—</span>'}</td>
-      <td class="px-4 py-3">${p.rating != null ? `⭐ ${p.rating.toFixed(1)}` : '—'}</td>
-      <td class="px-4 py-3 text-gray-400 text-xs">${fmtDate(p.lastSyncedAt)}</td>
-      <td class="px-4 py-3" id="p-status-${sid}">${statusBadge}</td>
-      <td class="px-4 py-3">
+      <!-- Google Place ID -->
+      <td class="px-3 py-3 text-gray-400 text-xs max-w-[130px] truncate"
+          title="${escHtml(p.googlePlaceId)}">${escHtml(p.googlePlaceId || '—')}</td>
+      <!-- 주소 -->
+      <td class="px-3 py-3 text-gray-500 text-xs max-w-[180px] truncate"
+          title="${escHtml(p.address)}">${escHtml(p.address || '—')}</td>
+      <!-- 카테고리 -->
+      <td class="px-3 py-3 text-gray-500 text-xs max-w-[120px]">
+        <div class="truncate" title="${escHtml(p.category)}">${escHtml(p.category || '—')}</div>
+      </td>
+      <!-- 타입 -->
+      <td class="px-3 py-3">
+        ${p.type  ? `<span class="bg-indigo-100 text-indigo-700 text-xs px-2 py-0.5 rounded-full">${p.type}</span>`  : '<span class="text-gray-300 text-xs">—</span>'}
+      </td>
+      <!-- 스페이스 -->
+      <td class="px-3 py-3">
+        ${p.space ? `<span class="bg-purple-100 text-purple-700 text-xs px-2 py-0.5 rounded-full">${p.space}</span>` : '<span class="text-gray-300 text-xs">—</span>'}
+      </td>
+      <!-- 분위기 -->
+      <td class="px-3 py-3">
+        ${p.mood  ? `<span class="bg-pink-100 text-pink-700 text-xs px-2 py-0.5 rounded-full">${p.mood}</span>`   : '<span class="text-gray-300 text-xs">—</span>'}
+      </td>
+      <!-- 위도 -->
+      <td class="px-3 py-3 text-xs text-gray-500 font-mono whitespace-nowrap">
+        ${p.latitude != null ? p.latitude.toFixed(6) : '—'}
+      </td>
+      <!-- 경도 -->
+      <td class="px-3 py-3 text-xs text-gray-500 font-mono whitespace-nowrap">
+        ${p.longitude != null ? p.longitude.toFixed(6) : '—'}
+      </td>
+      <!-- 평점 -->
+      <td class="px-3 py-3 whitespace-nowrap text-xs">
+        ${p.rating != null ? `⭐ ${p.rating.toFixed(1)}` : '—'}
+      </td>
+      <!-- 리뷰수 -->
+      <td class="px-3 py-3 text-xs text-gray-500 text-center">
+        ${p.userRatingsTotal != null ? p.userRatingsTotal.toLocaleString() : '—'}
+      </td>
+      <!-- 가격 -->
+      <td class="px-3 py-3 text-center">${priceBadge}</td>
+      <!-- 영업상태 -->
+      <td class="px-3 py-3">${businessBadge}</td>
+      <!-- 전화번호 -->
+      <td class="px-3 py-3 text-xs text-gray-500 whitespace-nowrap">
+        ${p.phoneNumber ? escHtml(p.phoneNumber) : '<span class="text-gray-300">—</span>'}
+      </td>
+      <!-- 웹사이트 -->
+      <td class="px-3 py-3 text-xs max-w-[120px]">
+        ${p.website
+          ? `<a href="${escHtml(p.website)}" target="_blank" rel="noopener"
+                class="text-blue-500 hover:text-blue-700 underline truncate block"
+                title="${escHtml(p.website)}">링크</a>`
+          : '<span class="text-gray-300">—</span>'}
+      </td>
+      <!-- 영업시간 (JSONB) -->
+      <td class="px-3 py-3">
+        ${p.openingHours
+          ? `<button onclick="showPlaceJsonDetail('${escJs(sid)}', 'openingHours', '영업시간')"
+                     class="text-xs text-blue-500 hover:text-blue-700 underline whitespace-nowrap">보기</button>`
+          : '<span class="text-gray-300 text-xs">—</span>'}
+      </td>
+      <!-- 리뷰 요약 -->
+      <td class="px-3 py-3 max-w-[180px]">
+        ${p.reviewData ? `
+          <div class="flex flex-col gap-1">
+            ${reviewSummary
+              ? `<div class="text-xs text-gray-600 truncate" title="${escHtml(reviewSummary)}">${escHtml(reviewSummary)}</div>`
+              : ''}
+            <button onclick="showPlaceJsonDetail('${escJs(sid)}', 'reviewData', '리뷰 전체')"
+                    class="text-xs text-blue-500 hover:text-blue-700 underline whitespace-nowrap self-start">
+              ${reviewSummary ? '전체 보기' : '보기'}
+            </button>
+          </div>
+        ` : '<span class="text-gray-300 text-xs">—</span>'}
+      </td>
+      <!-- 마지막 분석 -->
+      <td class="px-3 py-3 text-gray-400 text-xs whitespace-nowrap">${fmtDate(p.lastSyncedAt)}</td>
+      <!-- 상태 -->
+      <td class="px-3 py-3" id="p-status-${sid}">${statusBadge}</td>
+      <!-- 액션 -->
+      <td class="px-3 py-3">
         ${p.googlePlaceId
           ? `<button id="p-btn-${sid}"
                      onclick="triggerReanalyze('${escJs(p.googlePlaceId)}', '${escJs(p.name)}', 'p')"
-                     class="bg-amber-500 hover:bg-amber-600 disabled:opacity-50 disabled:cursor-not-allowed text-white text-xs px-3 py-1 rounded transition">
+                     class="bg-amber-500 hover:bg-amber-600 disabled:opacity-50 disabled:cursor-not-allowed text-white text-xs px-3 py-1 rounded transition whitespace-nowrap">
                재분석
              </button>`
           : '<span class="text-gray-300 text-xs">—</span>'}
       </td>
     </tr>`;
   }).join('');
+}
+
+// ── 장소 관리 탭 JSON 팝업 ─────────────────────────────────────────────────
+function showPlaceJsonDetail(sid, field, label) {
+  const raw = placeJsonData[sid]?.[field];
+  if (!raw) { alert(`[${label}]\n\n데이터 없음`); return; }
+  try {
+    alert(`[${label}]\n\n${JSON.stringify(JSON.parse(raw), null, 2)}`);
+  } catch {
+    alert(`[${label}]\n\n${raw}`);
+  }
 }
 
 // ════════════════════════════════════════════════════════════════════════════

@@ -228,20 +228,49 @@ public class AdminService {
     }
 
     public record AdminPlaceDto(
-            Long id, String googlePlaceId, String name, String address,
-            String type, String space, String mood,
-            Double rating, Integer userRatingsTotal,
-            String lastSyncedAt, String analysisStatus
+            Long    id,
+            String  googlePlaceId,
+            String  name,
+            String  address,
+            String  category,
+            String  type,               // PlaceType enum
+            String  space,              // Space enum
+            String  mood,               // Mood enum
+            Double  latitude,
+            Double  longitude,
+            Double  rating,
+            Integer userRatingsTotal,
+            Integer priceLevel,         // 0(무료) ~ 4(매우 비쌈)
+            String  businessStatus,     // BusinessStatus enum
+            String  phoneNumber,
+            String  website,
+            String  openingHours,       // JSONB raw string
+            String  reviewData,         // JSONB raw string (AI 분석 리뷰)
+            String  lastSyncedAt,
+            String  analysisStatus
     ) {
         static AdminPlaceDto from(Place p) {
             boolean analyzed = p.getType() != null && p.getSpace() != null && p.getMood() != null;
             return new AdminPlaceDto(
-                    p.getId(), p.getGooglePlaceId(), p.getName(), p.getAddress(),
-                    p.getType()  != null ? p.getType().name()  : null,
-                    p.getSpace() != null ? p.getSpace().name() : null,
-                    p.getMood()  != null ? p.getMood().name()  : null,
-                    p.getRating(), p.getUserRatingsTotal(),
-                    p.getLastSyncedAt() != null ? p.getLastSyncedAt().toString() : null,
+                    p.getId(),
+                    p.getGooglePlaceId(),
+                    p.getName(),
+                    p.getAddress(),
+                    p.getCategory(),
+                    p.getType()           != null ? p.getType().name()           : null,
+                    p.getSpace()          != null ? p.getSpace().name()          : null,
+                    p.getMood()           != null ? p.getMood().name()           : null,
+                    p.getLatitude(),
+                    p.getLongitude(),
+                    p.getRating(),
+                    p.getUserRatingsTotal(),
+                    p.getPriceLevel(),
+                    p.getBusinessStatus() != null ? p.getBusinessStatus().name() : null,
+                    p.getPhoneNumber(),
+                    p.getWebsite(),
+                    p.getOpeningHours(),
+                    p.getReviewData(),
+                    p.getLastSyncedAt()   != null ? p.getLastSyncedAt().toString() : null,
                     analyzed ? "COMPLETE" : "PENDING");
         }
     }
