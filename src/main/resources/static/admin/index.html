@@ -5,135 +5,234 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Plan B Admin</title>
   <script src="https://cdn.tailwindcss.com"></script>
-  <style>
-    [x-cloak] { display: none !important; }
-    .badge-complete  { @apply bg-green-100 text-green-800 text-xs font-semibold px-2 py-0.5 rounded-full; }
-    .badge-pending   { @apply bg-yellow-100 text-yellow-800 text-xs font-semibold px-2 py-0.5 rounded-full; }
-    .badge-progress  { @apply bg-blue-100 text-blue-800 text-xs font-semibold px-2 py-0.5 rounded-full; }
-    .btn-primary     { @apply bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-medium px-4 py-2 rounded-lg transition; }
-    .btn-sm          { @apply bg-amber-500 hover:bg-amber-600 text-white text-xs font-medium px-3 py-1 rounded transition; }
-    .btn-sm:disabled { @apply opacity-50 cursor-not-allowed; }
-    .input-base      { @apply border border-gray-300 rounded-lg px-3 py-2 text-sm w-full focus:outline-none focus:ring-2 focus:ring-indigo-400; }
-  </style>
 </head>
-<body class="bg-gray-50 min-h-screen text-gray-800 font-sans">
+<body class="bg-gray-100 min-h-screen text-gray-800 text-sm font-sans">
 
-<!-- ═══════════════════ 로그인 화면 ═══════════════════ -->
+<!-- ═══════ 로그인 ═══════ -->
 <div id="login-section" class="flex items-center justify-center min-h-screen">
-  <div class="bg-white shadow-lg rounded-2xl p-8 w-full max-w-sm">
+  <div class="bg-white shadow-xl rounded-2xl p-8 w-full max-w-sm">
     <div class="text-center mb-6">
-      <div class="text-3xl font-bold text-indigo-600">Plan B</div>
-      <div class="text-gray-500 text-sm mt-1">관리자 페이지</div>
+      <div class="text-3xl font-black text-indigo-600 tracking-tight">Plan B</div>
+      <div class="text-gray-400 text-xs mt-1">Admin Dashboard</div>
     </div>
-
-    <form id="login-form" onsubmit="handleLogin(event)" class="space-y-4">
+    <form onsubmit="handleLogin(event)" class="space-y-4">
       <div>
-        <label class="block text-sm font-medium text-gray-700 mb-1">이메일</label>
-        <input id="input-email" type="email" class="input-base" placeholder="admin@example.com" required />
+        <label class="block text-xs font-semibold text-gray-500 mb-1 uppercase tracking-wide">이메일</label>
+        <input id="inp-email" type="email" required placeholder="admin@planb.com"
+               class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400" />
       </div>
       <div>
-        <label class="block text-sm font-medium text-gray-700 mb-1">비밀번호</label>
-        <input id="input-password" type="password" class="input-base" placeholder="••••••••" required />
+        <label class="block text-xs font-semibold text-gray-500 mb-1 uppercase tracking-wide">비밀번호</label>
+        <input id="inp-pw" type="password" required placeholder="••••••••"
+               class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400" />
       </div>
-      <div id="login-error" class="text-red-500 text-sm hidden"></div>
-      <button type="submit" id="login-btn" class="btn-primary w-full">로그인</button>
+      <p id="login-err" class="text-red-500 text-xs hidden"></p>
+      <button id="login-btn" type="submit"
+              class="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-semibold py-2 rounded-lg transition">
+        로그인
+      </button>
     </form>
   </div>
 </div>
 
-<!-- ═══════════════════ 어드민 메인 화면 ═══════════════════ -->
-<div id="admin-section" class="hidden">
+<!-- ═══════ 어드민 본체 ═══════ -->
+<div id="admin-section" class="hidden min-h-screen flex flex-col">
 
-  <!-- 상단 네비게이션 -->
-  <header class="bg-white shadow-sm sticky top-0 z-10">
-    <div class="max-w-screen-xl mx-auto px-6 py-3 flex items-center justify-between">
-      <div class="flex items-center gap-3">
-        <span class="text-xl font-bold text-indigo-600">Plan B</span>
-        <span class="text-gray-400">|</span>
-        <span class="text-gray-700 font-medium">Admin Dashboard</span>
+  <!-- 헤더 -->
+  <header class="bg-white border-b sticky top-0 z-20 shadow-sm">
+    <div class="max-w-screen-2xl mx-auto px-6 py-3 flex items-center justify-between">
+      <div class="flex items-center gap-2">
+        <span class="text-lg font-black text-indigo-600">Plan B</span>
+        <span class="text-gray-300">|</span>
+        <span class="text-gray-600 font-medium">Admin</span>
       </div>
       <div class="flex items-center gap-4">
-        <span id="admin-nickname" class="text-sm text-gray-500"></span>
-        <button onclick="handleLogout()" class="text-sm text-gray-500 hover:text-red-500 transition">로그아웃</button>
+        <span id="hdr-nickname" class="text-gray-500 text-xs"></span>
+        <button onclick="handleLogout()" class="text-xs text-gray-400 hover:text-red-500 transition">로그아웃</button>
       </div>
     </div>
   </header>
 
+  <!-- 탭 메뉴 -->
+  <div class="bg-white border-b">
+    <div class="max-w-screen-2xl mx-auto px-6 flex gap-0">
+      <button onclick="switchTab('users')" id="tab-btn-users"
+              class="tab-btn px-5 py-3 font-semibold text-indigo-600 border-b-2 border-indigo-600 text-sm">
+        사용자 관리
+      </button>
+      <button onclick="switchTab('places')" id="tab-btn-places"
+              class="tab-btn px-5 py-3 font-medium text-gray-400 hover:text-gray-700 text-sm border-b-2 border-transparent transition">
+        장소 관리
+      </button>
+    </div>
+  </div>
+
   <!-- 본문 -->
-  <main class="max-w-screen-xl mx-auto px-6 py-8">
+  <main class="flex-1 max-w-screen-2xl mx-auto w-full px-6 py-6 space-y-6">
 
-    <!-- 통계 카드 -->
-    <div class="grid grid-cols-3 gap-4 mb-8">
-      <div class="bg-white rounded-xl shadow-sm p-5">
-        <div class="text-sm text-gray-500 mb-1">전체 장소</div>
-        <div id="stat-total" class="text-3xl font-bold text-gray-800">—</div>
+    <!-- ══════════ 사용자 관리 탭 ══════════ -->
+    <div id="tab-users">
+
+      <!-- ── 사용자 패널 ── -->
+      <section class="bg-white rounded-xl shadow-sm overflow-hidden">
+        <div class="px-5 py-4 border-b flex items-center justify-between">
+          <h2 class="font-bold text-base">사용자 목록</h2>
+          <div class="flex items-center gap-2">
+            <input id="user-search" type="text" placeholder="이메일 / 닉네임 검색..."
+                   oninput="applyUserFilter()"
+                   class="border border-gray-300 rounded-lg px-3 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-indigo-400 w-52" />
+            <button onclick="loadUsers()"
+                    class="bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-semibold px-3 py-1.5 rounded-lg transition">
+              새로고침
+            </button>
+          </div>
+        </div>
+        <div id="users-loading" class="py-10 text-center text-gray-400 text-xs">불러오는 중...</div>
+        <div id="users-table-wrap" class="overflow-x-auto hidden">
+          <table class="w-full">
+            <thead class="bg-gray-50 text-gray-400 text-xs uppercase">
+              <tr>
+                <th class="px-4 py-3 text-left">ID</th>
+                <th class="px-4 py-3 text-left">이메일</th>
+                <th class="px-4 py-3 text-left">닉네임</th>
+                <th class="px-4 py-3 text-left">권한</th>
+                <th class="px-4 py-3 text-left">가입방법</th>
+                <th class="px-4 py-3 text-left">상태</th>
+                <th class="px-4 py-3 text-left">가입일</th>
+                <th class="px-4 py-3 text-left">액션</th>
+              </tr>
+            </thead>
+            <tbody id="users-tbody" class="divide-y divide-gray-100"></tbody>
+          </table>
+        </div>
+        <div id="users-empty" class="py-10 text-center text-gray-400 text-xs hidden">검색 결과가 없습니다.</div>
+        <div id="users-count" class="px-5 py-2 text-xs text-gray-400 text-right border-t"></div>
+      </section>
+
+      <!-- ── 선택된 사용자의 여행 패널 ── -->
+      <section id="trips-panel" class="bg-white rounded-xl shadow-sm overflow-hidden hidden">
+        <div class="px-5 py-4 border-b flex items-center justify-between">
+          <h2 id="trips-title" class="font-bold text-base"></h2>
+          <button onclick="closeTripsPanel()" class="text-gray-400 hover:text-gray-600 text-xs transition">✕ 닫기</button>
+        </div>
+        <div id="trips-loading" class="py-8 text-center text-gray-400 text-xs">불러오는 중...</div>
+        <div id="trips-table-wrap" class="overflow-x-auto hidden">
+          <table class="w-full">
+            <thead class="bg-gray-50 text-gray-400 text-xs uppercase">
+              <tr>
+                <th class="px-4 py-3 text-left">여행 ID</th>
+                <th class="px-4 py-3 text-left">제목</th>
+                <th class="px-4 py-3 text-left">기간</th>
+                <th class="px-4 py-3 text-left">이동수단</th>
+                <th class="px-4 py-3 text-left">여행스타일</th>
+                <th class="px-4 py-3 text-left">생성일</th>
+                <th class="px-4 py-3 text-left">액션</th>
+              </tr>
+            </thead>
+            <tbody id="trips-tbody" class="divide-y divide-gray-100"></tbody>
+          </table>
+        </div>
+        <div id="trips-empty" class="py-8 text-center text-gray-400 text-xs hidden">여행이 없습니다.</div>
+      </section>
+
+      <!-- ── 선택된 여행의 장소 패널 ── -->
+      <section id="trip-places-panel" class="bg-white rounded-xl shadow-sm overflow-hidden hidden">
+        <div class="px-5 py-4 border-b flex items-center justify-between">
+          <h2 id="trip-places-title" class="font-bold text-base"></h2>
+          <button onclick="closeTripPlacesPanel()" class="text-gray-400 hover:text-gray-600 text-xs transition">✕ 닫기</button>
+        </div>
+        <div id="trip-places-loading" class="py-8 text-center text-gray-400 text-xs">불러오는 중...</div>
+        <div id="trip-places-table-wrap" class="overflow-x-auto hidden">
+          <table class="w-full">
+            <thead class="bg-gray-50 text-gray-400 text-xs uppercase">
+              <tr>
+                <th class="px-4 py-3 text-left">일차</th>
+                <th class="px-4 py-3 text-left">순서</th>
+                <th class="px-4 py-3 text-left">장소명</th>
+                <th class="px-4 py-3 text-left">Google Place ID</th>
+                <th class="px-4 py-3 text-left">방문시간</th>
+                <th class="px-4 py-3 text-left">출처</th>
+                <th class="px-4 py-3 text-left">분석상태</th>
+                <th class="px-4 py-3 text-left">액션</th>
+              </tr>
+            </thead>
+            <tbody id="trip-places-tbody" class="divide-y divide-gray-100"></tbody>
+          </table>
+        </div>
+        <div id="trip-places-empty" class="py-8 text-center text-gray-400 text-xs hidden">등록된 장소가 없습니다.</div>
+      </section>
+
+    </div><!-- /tab-users -->
+
+    <!-- ══════════ 장소 관리 탭 ══════════ -->
+    <div id="tab-places" class="hidden space-y-6">
+
+      <!-- 통계 카드 -->
+      <div class="grid grid-cols-3 gap-4">
+        <div class="bg-white rounded-xl shadow-sm p-5">
+          <div class="text-xs text-gray-400 mb-1">전체 장소</div>
+          <div id="p-stat-total" class="text-3xl font-bold text-gray-800">—</div>
+        </div>
+        <div class="bg-white rounded-xl shadow-sm p-5">
+          <div class="text-xs text-gray-400 mb-1">분석 완료</div>
+          <div id="p-stat-complete" class="text-3xl font-bold text-green-600">—</div>
+        </div>
+        <div class="bg-white rounded-xl shadow-sm p-5">
+          <div class="text-xs text-gray-400 mb-1">분석 미완료</div>
+          <div id="p-stat-pending" class="text-3xl font-bold text-yellow-500">—</div>
+        </div>
       </div>
-      <div class="bg-white rounded-xl shadow-sm p-5">
-        <div class="text-sm text-gray-500 mb-1">분석 완료</div>
-        <div id="stat-complete" class="text-3xl font-bold text-green-600">—</div>
-      </div>
-      <div class="bg-white rounded-xl shadow-sm p-5">
-        <div class="text-sm text-gray-500 mb-1">분석 미완료</div>
-        <div id="stat-pending" class="text-3xl font-bold text-yellow-500">—</div>
-      </div>
-    </div>
 
-    <!-- 검색 + 필터 + 새로고침 -->
-    <div class="flex items-center gap-3 mb-4">
-      <input id="search-input" type="text" class="input-base max-w-xs"
-             placeholder="장소명 검색..."
-             oninput="applyFilter()" />
+      <!-- 장소 테이블 -->
+      <section class="bg-white rounded-xl shadow-sm overflow-hidden">
+        <div class="px-5 py-4 border-b flex items-center gap-2 flex-wrap">
+          <input id="p-search" type="text" placeholder="장소명 검색..." oninput="applyPlaceFilter()"
+                 class="border border-gray-300 rounded-lg px-3 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-indigo-400 w-48" />
+          <select id="p-filter-status" onchange="applyPlaceFilter()"
+                  class="border border-gray-300 rounded-lg px-3 py-1.5 text-xs focus:outline-none w-36">
+            <option value="">전체 상태</option>
+            <option value="COMPLETE">분석 완료</option>
+            <option value="PENDING">분석 미완료</option>
+          </select>
+          <select id="p-filter-type" onchange="applyPlaceFilter()"
+                  class="border border-gray-300 rounded-lg px-3 py-1.5 text-xs focus:outline-none w-32">
+            <option value="">전체 타입</option>
+            <option>FOOD</option><option>CAFE</option><option>SIGHTS</option>
+            <option>SHOP</option><option>MARKET</option><option>THEME</option>
+            <option>CULTURE</option><option>PARK</option>
+          </select>
+          <button onclick="loadDbPlaces()"
+                  class="bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-semibold px-3 py-1.5 rounded-lg transition ml-auto">
+            새로고침
+          </button>
+        </div>
+        <div id="p-loading" class="py-10 text-center text-gray-400 text-xs">불러오는 중...</div>
+        <div id="p-table-wrap" class="overflow-x-auto hidden">
+          <table class="w-full">
+            <thead class="bg-gray-50 text-gray-400 text-xs uppercase">
+              <tr>
+                <th class="px-4 py-3 text-left">ID</th>
+                <th class="px-4 py-3 text-left">장소명</th>
+                <th class="px-4 py-3 text-left">주소</th>
+                <th class="px-4 py-3 text-left">타입</th>
+                <th class="px-4 py-3 text-left">스페이스</th>
+                <th class="px-4 py-3 text-left">분위기</th>
+                <th class="px-4 py-3 text-left">평점</th>
+                <th class="px-4 py-3 text-left">마지막 분석</th>
+                <th class="px-4 py-3 text-left">상태</th>
+                <th class="px-4 py-3 text-left">액션</th>
+              </tr>
+            </thead>
+            <tbody id="p-tbody" class="divide-y divide-gray-100"></tbody>
+          </table>
+        </div>
+        <div id="p-empty" class="py-10 text-center text-gray-400 text-xs hidden">검색 결과가 없습니다.</div>
+        <div id="p-count" class="px-5 py-2 text-xs text-gray-400 text-right border-t"></div>
+      </section>
+    </div><!-- /tab-places -->
 
-      <select id="filter-status" class="input-base max-w-[160px]" onchange="applyFilter()">
-        <option value="">전체 상태</option>
-        <option value="COMPLETE">분석 완료</option>
-        <option value="PENDING">분석 미완료</option>
-      </select>
-
-      <select id="filter-type" class="input-base max-w-[160px]" onchange="applyFilter()">
-        <option value="">전체 타입</option>
-        <option>FOOD</option>
-        <option>CAFE</option>
-        <option>SIGHTS</option>
-        <option>SHOP</option>
-        <option>MARKET</option>
-        <option>THEME</option>
-        <option>CULTURE</option>
-        <option>PARK</option>
-      </select>
-
-      <button onclick="loadPlaces()" class="btn-primary whitespace-nowrap">새로고침</button>
-    </div>
-
-    <!-- 장소 테이블 -->
-    <div class="bg-white rounded-xl shadow-sm overflow-hidden">
-      <div id="table-loading" class="py-16 text-center text-gray-400">불러오는 중...</div>
-
-      <table id="places-table" class="w-full text-sm hidden">
-        <thead class="bg-gray-50 text-gray-500 uppercase text-xs">
-          <tr>
-            <th class="px-4 py-3 text-left">ID</th>
-            <th class="px-4 py-3 text-left">장소명</th>
-            <th class="px-4 py-3 text-left">주소</th>
-            <th class="px-4 py-3 text-left">타입</th>
-            <th class="px-4 py-3 text-left">스페이스</th>
-            <th class="px-4 py-3 text-left">분위기</th>
-            <th class="px-4 py-3 text-left">평점</th>
-            <th class="px-4 py-3 text-left">마지막 분석</th>
-            <th class="px-4 py-3 text-left">상태</th>
-            <th class="px-4 py-3 text-left">액션</th>
-          </tr>
-        </thead>
-        <tbody id="places-tbody" class="divide-y divide-gray-100"></tbody>
-      </table>
-
-      <div id="no-results" class="py-16 text-center text-gray-400 hidden">검색 결과가 없습니다.</div>
-    </div>
-
-    <!-- 결과 수 -->
-    <div id="result-count" class="mt-3 text-sm text-gray-400 text-right"></div>
   </main>
-</div>
+</div><!-- /admin-section -->
 
 <script src="/admin/app.js"></script>
 </body>

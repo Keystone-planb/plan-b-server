@@ -1,305 +1,495 @@
-/**
- * Plan B Admin — app.js
- * 순수 Fetch API + Tailwind CSS 기반 어드민 페이지 로직
- */
-
 'use strict';
 
-// ── 상태 ──────────────────────────────────────────────────────────────────
-let accessToken = sessionStorage.getItem('admin_token') || null;
-let refreshToken = sessionStorage.getItem('admin_refresh') || null;
-let allPlaces = [];                     // 서버에서 받아온 전체 장소
-const pollingTimers = {};               // { googlePlaceId: intervalId }
+// ════════════════════════════════════════════════════════════════════════════
+// 상태
+// ════════════════════════════════════════════════════════════════════════════
+let accessToken   = localStorage.getItem('admin_token')   || null;
+let refreshToken  = localStorage.getItem('admin_refresh')  || null;
 
-// ── 초기 진입 ─────────────────────────────────────────────────────────────
+let allUsers   = [];   // GET /api/admin/users
+let allPlaces  = [];   // GET /api/admin/places
+
+let currentUserId   = null;
+let currentTripId   = null;
+
+const pollingTimers = {};  // { googlePlaceId: intervalId }
+
+// ════════════════════════════════════════════════════════════════════════════
+// 초기 진입
+// ════════════════════════════════════════════════════════════════════════════
 window.addEventListener('DOMContentLoaded', () => {
   if (accessToken) {
     showAdmin();
-    loadPlaces();
+    switchTab('users');
+    loadUsers();
   }
 });
 
-// ── 로그인 ────────────────────────────────────────────────────────────────
+// ════════════════════════════════════════════════════════════════════════════
+// 로그인 / 로그아웃
+// ════════════════════════════════════════════════════════════════════════════
 async function handleLogin(e) {
   e.preventDefault();
   const btn = document.getElementById('login-btn');
-  const errEl = document.getElementById('login-error');
-  errEl.classList.add('hidden');
+  const err = document.getElementById('login-err');
+  err.classList.add('hidden');
   btn.disabled = true;
   btn.textContent = '로그인 중...';
 
   try {
-    const res = await fetch('/api/auth/login', {
+    const data = await fetch('/api/auth/login', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        email: document.getElementById('input-email').value,
-        password: document.getElementById('input-password').value
+        email:    document.getElementById('inp-email').value,
+        password: document.getElementById('inp-pw').value
       })
+    }).then(res => {
+      if (!res.ok) return res.json().then(d => { throw new Error(d.message || '로그인 실패'); });
+      return res.json();
     });
 
-    if (!res.ok) {
-      const data = await res.json().catch(() => ({}));
-      throw new Error(data.message || '이메일 또는 비밀번호를 확인해 주세요.');
-    }
-
-    const data = await res.json();
-    accessToken = data.access_token;
+    accessToken  = data.access_token;
     refreshToken = data.refresh_token;
-    sessionStorage.setItem('admin_token', accessToken);
-    sessionStorage.setItem('admin_refresh', refreshToken);
+    localStorage.setItem('admin_token',   accessToken);
+    localStorage.setItem('admin_refresh', refreshToken);
+    localStorage.setItem('admin_nick',    data.nickname || '');
 
-    document.getElementById('admin-nickname').textContent = data.nickname || data.user_id;
+    document.getElementById('hdr-nickname').textContent = data.nickname || '';
     showAdmin();
-    loadPlaces();
-
-  } catch (err) {
-    errEl.textContent = err.message;
-    errEl.classList.remove('hidden');
+    switchTab('users');
+    loadUsers();
+  } catch (ex) {
+    err.textContent = ex.message;
+    err.classList.remove('hidden');
   } finally {
     btn.disabled = false;
     btn.textContent = '로그인';
   }
 }
 
-// ── 로그아웃 ──────────────────────────────────────────────────────────────
 async function handleLogout() {
   try {
     await apiFetch('/api/auth/logout', {
       method: 'POST',
       body: JSON.stringify({ refreshToken })
     });
-  } catch (_) { /* 무시 */ }
+  } catch (_) {}
 
-  // 모든 폴링 중지
   Object.values(pollingTimers).forEach(clearInterval);
-
-  accessToken = null;
-  refreshToken = null;
-  sessionStorage.removeItem('admin_token');
-  sessionStorage.removeItem('admin_refresh');
-  allPlaces = [];
+  accessToken = refreshToken = null;
+  allUsers = []; allPlaces = [];
+  currentUserId = currentTripId = null;
+  localStorage.removeItem('admin_token');
+  localStorage.removeItem('admin_refresh');
+  localStorage.removeItem('admin_nick');
 
   document.getElementById('admin-section').classList.add('hidden');
   document.getElementById('login-section').classList.remove('hidden');
-  document.getElementById('input-email').value = '';
-  document.getElementById('input-password').value = '';
+  document.getElementById('inp-email').value = '';
+  document.getElementById('inp-pw').value = '';
 }
 
-// ── 화면 전환 ─────────────────────────────────────────────────────────────
 function showAdmin() {
   document.getElementById('login-section').classList.add('hidden');
   document.getElementById('admin-section').classList.remove('hidden');
-  const stored = sessionStorage.getItem('admin_nickname');
-  if (stored) document.getElementById('admin-nickname').textContent = stored;
+  const nick = localStorage.getItem('admin_nick') || '';
+  document.getElementById('hdr-nickname').textContent = nick;
 }
 
-// ── 장소 목록 로드 ────────────────────────────────────────────────────────
-async function loadPlaces() {
-  document.getElementById('table-loading').classList.remove('hidden');
-  document.getElementById('places-table').classList.add('hidden');
-  document.getElementById('no-results').classList.add('hidden');
-
-  try {
-    const data = await apiFetch('/api/admin/places');
-    allPlaces = data;
-    updateStats(data);
-    applyFilter();
-  } catch (err) {
-    document.getElementById('table-loading').textContent = '불러오기 실패: ' + err.message;
-  }
-}
-
-// ── 통계 카드 업데이트 ────────────────────────────────────────────────────
-function updateStats(places) {
-  const total = places.length;
-  const complete = places.filter(p => p.analysisStatus === 'COMPLETE').length;
-  document.getElementById('stat-total').textContent = total;
-  document.getElementById('stat-complete').textContent = complete;
-  document.getElementById('stat-pending').textContent = total - complete;
-}
-
-// ── 검색 / 필터 적용 ──────────────────────────────────────────────────────
-function applyFilter() {
-  const query  = (document.getElementById('search-input').value || '').toLowerCase();
-  const status = document.getElementById('filter-status').value;
-  const type   = document.getElementById('filter-type').value;
-
-  const filtered = allPlaces.filter(p => {
-    const nameMatch   = !query  || (p.name || '').toLowerCase().includes(query);
-    const statusMatch = !status || p.analysisStatus === status;
-    const typeMatch   = !type   || p.type === type;
-    return nameMatch && statusMatch && typeMatch;
+// ════════════════════════════════════════════════════════════════════════════
+// 탭 전환
+// ════════════════════════════════════════════════════════════════════════════
+function switchTab(name) {
+  ['users', 'places'].forEach(t => {
+    document.getElementById(`tab-${t}`).classList.toggle('hidden', t !== name);
+    const btn = document.getElementById(`tab-btn-${t}`);
+    if (t === name) {
+      btn.classList.add('text-indigo-600', 'border-indigo-600', 'font-semibold');
+      btn.classList.remove('text-gray-400', 'border-transparent', 'font-medium');
+    } else {
+      btn.classList.remove('text-indigo-600', 'border-indigo-600', 'font-semibold');
+      btn.classList.add('text-gray-400', 'border-transparent', 'font-medium');
+    }
   });
 
-  renderTable(filtered);
-  document.getElementById('result-count').textContent =
-      `총 ${filtered.length}개 (전체 ${allPlaces.length}개 중)`;
+  if (name === 'places' && allPlaces.length === 0) loadDbPlaces();
 }
 
-// ── 테이블 렌더링 ─────────────────────────────────────────────────────────
-function renderTable(places) {
-  document.getElementById('table-loading').classList.add('hidden');
+// ════════════════════════════════════════════════════════════════════════════
+// ── 사용자 관리 ──────────────────────────────────────────────────────────
+// ════════════════════════════════════════════════════════════════════════════
 
-  if (places.length === 0) {
-    document.getElementById('places-table').classList.add('hidden');
-    document.getElementById('no-results').classList.remove('hidden');
-    return;
+async function loadUsers() {
+  show('users-loading'); hide('users-table-wrap'); hide('users-empty');
+  try {
+    allUsers = await apiFetch('/api/admin/users');
+    renderUsersTable(allUsers);
+  } catch (ex) {
+    document.getElementById('users-loading').textContent = '불러오기 실패: ' + ex.message;
+  }
+}
+
+function applyUserFilter() {
+  const q = (document.getElementById('user-search').value || '').toLowerCase();
+  const filtered = allUsers.filter(u =>
+    (u.email || '').toLowerCase().includes(q) ||
+    (u.nickname || '').toLowerCase().includes(q)
+  );
+  renderUsersTable(filtered);
+}
+
+function renderUsersTable(users) {
+  hide('users-loading');
+  if (users.length === 0) { show('users-empty'); hide('users-table-wrap'); }
+  else { hide('users-empty'); show('users-table-wrap'); }
+
+  document.getElementById('users-tbody').innerHTML = users.map(u => `
+    <tr class="hover:bg-gray-50 cursor-pointer transition" onclick="showUserTrips(${u.id}, '${escJs(u.nickname)}')">
+      <td class="px-4 py-3 text-gray-400">${u.id}</td>
+      <td class="px-4 py-3 font-medium">${escHtml(u.email)}</td>
+      <td class="px-4 py-3">${escHtml(u.nickname)}</td>
+      <td class="px-4 py-3">
+        ${u.role === 'ADMIN'
+          ? '<span class="bg-red-100 text-red-700 text-xs font-bold px-2 py-0.5 rounded-full">ADMIN</span>'
+          : '<span class="bg-gray-100 text-gray-500 text-xs px-2 py-0.5 rounded-full">USER</span>'}
+      </td>
+      <td class="px-4 py-3 text-gray-500">${escHtml(u.provider)}</td>
+      <td class="px-4 py-3">
+        ${u.status === 'ACTIVE'
+          ? '<span class="bg-green-100 text-green-700 text-xs px-2 py-0.5 rounded-full">활성</span>'
+          : '<span class="bg-gray-200 text-gray-500 text-xs px-2 py-0.5 rounded-full">탈퇴</span>'}
+      </td>
+      <td class="px-4 py-3 text-gray-400">${fmtDate(u.createdAt)}</td>
+      <td class="px-4 py-3" onclick="event.stopPropagation()">
+        <button onclick="deleteUser(${u.id}, '${escJs(u.email)}')"
+                class="bg-red-500 hover:bg-red-600 text-white text-xs px-3 py-1 rounded transition">
+          삭제
+        </button>
+      </td>
+    </tr>`).join('');
+
+  document.getElementById('users-count').textContent =
+    `총 ${users.length}명 (전체 ${allUsers.length}명)`;
+}
+
+async function deleteUser(userId, email) {
+  if (!confirm(`⚠️ [사용자 삭제]\n\n이메일: ${email}\n\n해당 사용자의 모든 여행, 장소, 알림이 함께 삭제됩니다.\n정말 삭제하시겠습니까?`)) return;
+  try {
+    await apiFetch(`/api/admin/users/${userId}`, { method: 'DELETE' });
+    allUsers = allUsers.filter(u => u.id !== userId);
+    renderUsersTable(allUsers);
+    if (currentUserId === userId) closeTripsPanel();
+    alert('삭제되었습니다.');
+  } catch (ex) {
+    alert('삭제 실패: ' + ex.message);
+  }
+}
+
+// ── 여행 패널 ──────────────────────────────────────────────────────────────
+
+async function showUserTrips(userId, nickname) {
+  currentUserId = userId;
+  closeTripPlacesPanel();
+  show('trips-panel');
+  document.getElementById('trips-title').textContent = `${nickname}님의 여행`;
+  show('trips-loading'); hide('trips-table-wrap'); hide('trips-empty');
+
+  try {
+    const trips = await apiFetch(`/api/admin/users/${userId}/trips`);
+    renderTripsTable(trips, nickname);
+  } catch (ex) {
+    document.getElementById('trips-loading').textContent = '불러오기 실패: ' + ex.message;
   }
 
-  document.getElementById('no-results').classList.add('hidden');
-  document.getElementById('places-table').classList.remove('hidden');
-
-  const tbody = document.getElementById('places-tbody');
-  tbody.innerHTML = places.map(p => buildRow(p)).join('');
+  document.getElementById('trips-panel').scrollIntoView({ behavior: 'smooth', block: 'start' });
 }
 
-function buildRow(p) {
-  const statusBadge = p.analysisStatus === 'COMPLETE'
-    ? `<span class="bg-green-100 text-green-800 text-xs font-semibold px-2 py-0.5 rounded-full">완료</span>`
-    : `<span id="badge-${safe(p.googlePlaceId)}" class="bg-yellow-100 text-yellow-800 text-xs font-semibold px-2 py-0.5 rounded-full">미완료</span>`;
+function renderTripsTable(trips, nickname) {
+  hide('trips-loading');
+  document.getElementById('trips-title').textContent =
+    `${nickname}님의 여행 (${trips.length}개)`;
 
-  const lastSync = p.lastSyncedAt
-    ? p.lastSyncedAt.replace('T', ' ').slice(0, 16)
-    : '—';
+  if (trips.length === 0) { show('trips-empty'); hide('trips-table-wrap'); return; }
+  hide('trips-empty'); show('trips-table-wrap');
 
-  const reanalyzeBtn = p.googlePlaceId
-    ? `<button id="btn-${safe(p.googlePlaceId)}"
-              onclick="triggerReanalyze('${escJs(p.googlePlaceId)}', '${escJs(p.name)}')"
-              class="bg-amber-500 hover:bg-amber-600 disabled:opacity-50 disabled:cursor-not-allowed text-white text-xs font-medium px-3 py-1 rounded transition">
-         재분석
-       </button>`
-    : '<span class="text-gray-300 text-xs">—</span>';
+  document.getElementById('trips-tbody').innerHTML = trips.map(t => `
+    <tr class="hover:bg-gray-50 cursor-pointer transition"
+        onclick="showTripPlaces(${t.tripId}, '${escJs(t.title)}')">
+      <td class="px-4 py-3 text-gray-400">${t.tripId}</td>
+      <td class="px-4 py-3 font-medium">${escHtml(t.title)}</td>
+      <td class="px-4 py-3 text-gray-500">${t.startDate} ~ ${t.endDate}</td>
+      <td class="px-4 py-3 text-gray-500">${t.transportMode || '—'}</td>
+      <td class="px-4 py-3 text-gray-500">${escHtml(t.travelStyles || '—')}</td>
+      <td class="px-4 py-3 text-gray-400">${fmtDate(t.createdAt)}</td>
+      <td class="px-4 py-3" onclick="event.stopPropagation()">
+        <button onclick="deleteTrip(${t.tripId}, '${escJs(t.title)}')"
+                class="bg-red-500 hover:bg-red-600 text-white text-xs px-3 py-1 rounded transition">
+          강제 삭제
+        </button>
+      </td>
+    </tr>`).join('');
+}
 
-  return `
-    <tr id="row-${safe(p.googlePlaceId)}" class="hover:bg-gray-50 transition">
-      <td class="px-4 py-3 text-gray-400 text-xs">${p.id ?? '—'}</td>
-      <td class="px-4 py-3 font-medium max-w-[180px]">
+async function deleteTrip(tripId, title) {
+  if (!confirm(`⚠️ [여행 강제 삭제]\n\n제목: ${title}\n\n해당 여행의 모든 일정과 장소가 삭제됩니다.\n정말 삭제하시겠습니까?`)) return;
+  try {
+    await apiFetch(`/api/admin/trips/${tripId}`, { method: 'DELETE' });
+    if (currentTripId === tripId) closeTripPlacesPanel();
+    // 여행 목록 새로고침
+    if (currentUserId) {
+      const nick = document.getElementById('trips-title').textContent.replace(/님의 여행.*/, '');
+      await showUserTrips(currentUserId, nick);
+    }
+    alert('삭제되었습니다.');
+  } catch (ex) {
+    alert('삭제 실패: ' + ex.message);
+  }
+}
+
+function closeTripsPanel() {
+  currentUserId = null;
+  hide('trips-panel');
+  closeTripPlacesPanel();
+}
+
+// ── 여행 장소 패널 ─────────────────────────────────────────────────────────
+
+async function showTripPlaces(tripId, title) {
+  currentTripId = tripId;
+  show('trip-places-panel');
+  document.getElementById('trip-places-title').textContent = `${title}의 장소`;
+  show('trip-places-loading'); hide('trip-places-table-wrap'); hide('trip-places-empty');
+
+  try {
+    const places = await apiFetch(`/api/admin/trips/${tripId}/places`);
+    renderTripPlacesTable(places, title);
+  } catch (ex) {
+    document.getElementById('trip-places-loading').textContent = '불러오기 실패: ' + ex.message;
+  }
+
+  document.getElementById('trip-places-panel').scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+
+function renderTripPlacesTable(places, title) {
+  hide('trip-places-loading');
+  document.getElementById('trip-places-title').textContent =
+    `${title}의 장소 (${places.length}개)`;
+
+  if (places.length === 0) { show('trip-places-empty'); hide('trip-places-table-wrap'); return; }
+  hide('trip-places-empty'); show('trip-places-table-wrap');
+
+  document.getElementById('trip-places-tbody').innerHTML = places.map(p => {
+    const sid = safe(p.googlePlaceId);
+    const sourceBadge = sourceColor(p.source);
+    return `
+    <tr id="tpr-${sid}" class="hover:bg-gray-50 transition">
+      <td class="px-4 py-3 text-center font-semibold text-indigo-500">${p.day}일차</td>
+      <td class="px-4 py-3 text-gray-500 text-center">${p.visitOrder}</td>
+      <td class="px-4 py-3 font-medium max-w-[160px] truncate" title="${escHtml(p.name)}">${escHtml(p.name)}</td>
+      <td class="px-4 py-3 text-gray-400 text-xs max-w-[160px] truncate" title="${escHtml(p.googlePlaceId)}">${escHtml(p.googlePlaceId)}</td>
+      <td class="px-4 py-3 text-gray-500">${p.visitTime || '—'} ${p.endTime ? '~ ' + p.endTime : ''}</td>
+      <td class="px-4 py-3">${sourceBadge}</td>
+      <td class="px-4 py-3" id="tpr-status-${sid}">
+        <span class="bg-gray-100 text-gray-400 text-xs px-2 py-0.5 rounded-full">확인 안 됨</span>
+      </td>
+      <td class="px-4 py-3">
+        ${p.googlePlaceId
+          ? `<button id="tpr-btn-${sid}"
+                     onclick="triggerReanalyze('${escJs(p.googlePlaceId)}', '${escJs(p.name)}', 'tpr')"
+                     class="bg-amber-500 hover:bg-amber-600 text-white text-xs px-3 py-1 rounded transition">
+               재분석
+             </button>`
+          : '<span class="text-gray-300 text-xs">—</span>'}
+      </td>
+    </tr>`;
+  }).join('');
+}
+
+function closeTripPlacesPanel() {
+  currentTripId = null;
+  hide('trip-places-panel');
+}
+
+// ════════════════════════════════════════════════════════════════════════════
+// ── 장소 관리 탭 ─────────────────────────────────────────────────────────
+// ════════════════════════════════════════════════════════════════════════════
+
+async function loadDbPlaces() {
+  show('p-loading'); hide('p-table-wrap'); hide('p-empty');
+  try {
+    allPlaces = await apiFetch('/api/admin/places');
+    updatePlaceStats(allPlaces);
+    applyPlaceFilter();
+  } catch (ex) {
+    document.getElementById('p-loading').textContent = '불러오기 실패: ' + ex.message;
+  }
+}
+
+function applyPlaceFilter() {
+  const q      = (document.getElementById('p-search').value || '').toLowerCase();
+  const status = document.getElementById('p-filter-status').value;
+  const type   = document.getElementById('p-filter-type').value;
+  const f = allPlaces.filter(p =>
+    (!q      || (p.name || '').toLowerCase().includes(q)) &&
+    (!status || p.analysisStatus === status) &&
+    (!type   || p.type === type)
+  );
+  renderDbPlacesTable(f);
+  document.getElementById('p-count').textContent =
+    `총 ${f.length}개 (전체 ${allPlaces.length}개)`;
+}
+
+function updatePlaceStats(places) {
+  const complete = places.filter(p => p.analysisStatus === 'COMPLETE').length;
+  document.getElementById('p-stat-total').textContent   = places.length;
+  document.getElementById('p-stat-complete').textContent = complete;
+  document.getElementById('p-stat-pending').textContent  = places.length - complete;
+}
+
+function renderDbPlacesTable(places) {
+  hide('p-loading');
+  if (places.length === 0) { show('p-empty'); hide('p-table-wrap'); return; }
+  hide('p-empty'); show('p-table-wrap');
+
+  document.getElementById('p-tbody').innerHTML = places.map(p => {
+    const sid = safe(p.googlePlaceId);
+    const statusBadge = p.analysisStatus === 'COMPLETE'
+      ? `<span class="bg-green-100 text-green-700 text-xs font-semibold px-2 py-0.5 rounded-full">완료</span>`
+      : `<span id="p-badge-${sid}" class="bg-yellow-100 text-yellow-700 text-xs font-semibold px-2 py-0.5 rounded-full">미완료</span>`;
+
+    return `
+    <tr class="hover:bg-gray-50 transition">
+      <td class="px-4 py-3 text-gray-400">${p.id ?? '—'}</td>
+      <td class="px-4 py-3 font-medium max-w-[160px]">
         <div class="truncate" title="${escHtml(p.name)}">${escHtml(p.name)}</div>
         <div class="text-gray-400 text-xs truncate mt-0.5" title="${escHtml(p.googlePlaceId)}">${escHtml(p.googlePlaceId || '')}</div>
       </td>
-      <td class="px-4 py-3 text-gray-500 text-xs max-w-[200px]">
-        <div class="truncate" title="${escHtml(p.address)}">${escHtml(p.address || '—')}</div>
-      </td>
+      <td class="px-4 py-3 text-gray-500 text-xs max-w-[180px] truncate" title="${escHtml(p.address)}">${escHtml(p.address || '—')}</td>
       <td class="px-4 py-3">${p.type  ? `<span class="bg-indigo-100 text-indigo-700 text-xs px-2 py-0.5 rounded-full">${p.type}</span>`  : '<span class="text-gray-300">—</span>'}</td>
       <td class="px-4 py-3">${p.space ? `<span class="bg-purple-100 text-purple-700 text-xs px-2 py-0.5 rounded-full">${p.space}</span>` : '<span class="text-gray-300">—</span>'}</td>
       <td class="px-4 py-3">${p.mood  ? `<span class="bg-pink-100 text-pink-700 text-xs px-2 py-0.5 rounded-full">${p.mood}</span>`   : '<span class="text-gray-300">—</span>'}</td>
-      <td class="px-4 py-3">${p.rating != null ? `⭐ ${p.rating.toFixed(1)} <span class="text-gray-400 text-xs">(${p.userRatingsTotal ?? 0})</span>` : '—'}</td>
-      <td class="px-4 py-3 text-gray-500 text-xs">${lastSync}</td>
-      <td class="px-4 py-3" id="status-cell-${safe(p.googlePlaceId)}">${statusBadge}</td>
-      <td class="px-4 py-3">${reanalyzeBtn}</td>
+      <td class="px-4 py-3">${p.rating != null ? `⭐ ${p.rating.toFixed(1)}` : '—'}</td>
+      <td class="px-4 py-3 text-gray-400 text-xs">${fmtDate(p.lastSyncedAt)}</td>
+      <td class="px-4 py-3" id="p-status-${sid}">${statusBadge}</td>
+      <td class="px-4 py-3">
+        ${p.googlePlaceId
+          ? `<button id="p-btn-${sid}"
+                     onclick="triggerReanalyze('${escJs(p.googlePlaceId)}', '${escJs(p.name)}', 'p')"
+                     class="bg-amber-500 hover:bg-amber-600 disabled:opacity-50 disabled:cursor-not-allowed text-white text-xs px-3 py-1 rounded transition">
+               재분석
+             </button>`
+          : '<span class="text-gray-300 text-xs">—</span>'}
+      </td>
     </tr>`;
+  }).join('');
 }
 
-// ── 재분석 트리거 + 폴링 ──────────────────────────────────────────────────
-async function triggerReanalyze(googlePlaceId, name) {
-  const safeId = safe(googlePlaceId);
-  const btn    = document.getElementById(`btn-${safeId}`);
-  const cell   = document.getElementById(`status-cell-${safeId}`);
+// ════════════════════════════════════════════════════════════════════════════
+// 재분석 (양쪽 탭 공유)
+// prefix: 'p' = 장소관리탭, 'tpr' = 여행장소패널
+// ════════════════════════════════════════════════════════════════════════════
 
-  if (!btn || !cell) return;
+async function triggerReanalyze(googlePlaceId, name, prefix) {
+  const sid = safe(googlePlaceId);
+  const btn    = document.getElementById(`${prefix}-btn-${sid}`);
+  const statusCell = document.getElementById(`${prefix}-status-${sid}`);
 
-  // 이미 폴링 중이면 무시
   if (pollingTimers[googlePlaceId]) return;
-
-  btn.disabled = true;
-  btn.textContent = '요청 중...';
+  if (btn) { btn.disabled = true; btn.textContent = '요청 중...'; }
 
   try {
-    await apiFetch(`/api/places/${encodeURIComponent(googlePlaceId)}/reanalyze`, {
-      method: 'POST'
-    });
+    await apiFetch(`/api/places/${encodeURIComponent(googlePlaceId)}/reanalyze`, { method: 'POST' });
 
-    cell.innerHTML = `<span id="badge-${safeId}" class="bg-blue-100 text-blue-800 text-xs font-semibold px-2 py-0.5 rounded-full">분석 중...</span>`;
-    btn.textContent = '분석 중...';
+    if (statusCell) statusCell.innerHTML =
+      `<span id="${prefix}-badge-${sid}" class="bg-blue-100 text-blue-700 text-xs font-semibold px-2 py-0.5 rounded-full">분석 중...</span>`;
+    if (btn) btn.textContent = '분석 중...';
 
-    // 로컬 상태도 PENDING 으로 업데이트
-    const place = allPlaces.find(p => p.googlePlaceId === googlePlaceId);
-    if (place) place.analysisStatus = 'PENDING';
-
-    // 3초 간격 폴링 시작
-    pollingTimers[googlePlaceId] = setInterval(() => pollStatus(googlePlaceId), 3000);
-
-  } catch (err) {
-    alert(`재분석 요청 실패: ${err.message}`);
-    btn.disabled = false;
-    btn.textContent = '재분석';
+    // 3초 간격 폴링
+    pollingTimers[googlePlaceId] = setInterval(
+      () => pollAnalysisStatus(googlePlaceId, prefix), 3000
+    );
+  } catch (ex) {
+    alert(`재분석 요청 실패: ${ex.message}`);
+    if (btn) { btn.disabled = false; btn.textContent = '재분석'; }
   }
 }
 
-async function pollStatus(googlePlaceId) {
-  const safeId = safe(googlePlaceId);
-
+async function pollAnalysisStatus(googlePlaceId, prefix) {
+  const sid = safe(googlePlaceId);
   try {
     const data = await apiFetch(`/api/places/${encodeURIComponent(googlePlaceId)}/analysis-status`);
-
     if (data.status === 'COMPLETE') {
-      // 폴링 중단
       clearInterval(pollingTimers[googlePlaceId]);
       delete pollingTimers[googlePlaceId];
 
-      // 배지 + 버튼 업데이트
-      const cell = document.getElementById(`status-cell-${safeId}`);
-      const btn  = document.getElementById(`btn-${safeId}`);
-      if (cell) cell.innerHTML = `<span class="bg-green-100 text-green-800 text-xs font-semibold px-2 py-0.5 rounded-full">완료</span>`;
-      if (btn)  { btn.disabled = false; btn.textContent = '재분석'; }
+      const statusCell = document.getElementById(`${prefix}-status-${sid}`);
+      const btn        = document.getElementById(`${prefix}-btn-${sid}`);
+      if (statusCell) statusCell.innerHTML =
+        `<span class="bg-green-100 text-green-700 text-xs font-semibold px-2 py-0.5 rounded-full">완료</span>`;
+      if (btn) { btn.disabled = false; btn.textContent = '재분석'; }
 
-      // 로컬 상태 업데이트 후 통계 갱신
-      const place = allPlaces.find(p => p.googlePlaceId === googlePlaceId);
-      if (place) place.analysisStatus = 'COMPLETE';
-      updateStats(allPlaces);
+      // 장소 탭 통계 업데이트
+      const p = allPlaces.find(x => x.googlePlaceId === googlePlaceId);
+      if (p) { p.analysisStatus = 'COMPLETE'; updatePlaceStats(allPlaces); }
     }
-  } catch (_) {
-    // 폴링 실패는 조용히 무시 (다음 주기에 재시도)
-  }
+  } catch (_) {}
 }
 
-// ── 공통 Fetch 유틸 ───────────────────────────────────────────────────────
-async function apiFetch(url, options = {}) {
-  const headers = {
-    'Content-Type': 'application/json',
-    ...(accessToken ? { 'Authorization': `Bearer ${accessToken}` } : {}),
-    ...(options.headers || {})
-  };
+// ════════════════════════════════════════════════════════════════════════════
+// 공통 Fetch
+// ════════════════════════════════════════════════════════════════════════════
+async function apiFetch(url, opts = {}) {
+  const res = await fetch(url, {
+    ...opts,
+    headers: {
+      'Content-Type': 'application/json',
+      ...(accessToken ? { Authorization: `Bearer ${accessToken}` } : {}),
+      ...(opts.headers || {})
+    }
+  });
 
-  const res = await fetch(url, { ...options, headers });
-
-  if (res.status === 401) {
-    handleLogout();
-    throw new Error('세션이 만료되었습니다. 다시 로그인해 주세요.');
-  }
-
-  if (res.status === 403) {
-    handleLogout();
-    throw new Error('관리자 권한이 없습니다.');
-  }
-
+  if (res.status === 401) { handleLogout(); throw new Error('세션이 만료되었습니다. 다시 로그인해 주세요.'); }
+  if (res.status === 403) { handleLogout(); throw new Error('관리자 권한이 없습니다.'); }
   if (!res.ok) {
-    const text = await res.text().catch(() => '');
-    throw new Error(text || `HTTP ${res.status}`);
+    const t = await res.text().catch(() => '');
+    throw new Error(t || `HTTP ${res.status}`);
   }
-
-  const text = await res.text();
-  return text ? JSON.parse(text) : null;
+  const t = await res.text();
+  return t ? JSON.parse(t) : null;
 }
 
-// ── 문자열 이스케이프 유틸 ────────────────────────────────────────────────
-function escHtml(str) {
-  if (str == null) return '';
-  return String(str)
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;');
+// ════════════════════════════════════════════════════════════════════════════
+// 유틸
+// ════════════════════════════════════════════════════════════════════════════
+function show(id) { document.getElementById(id)?.classList.remove('hidden'); }
+function hide(id) { document.getElementById(id)?.classList.add('hidden'); }
+
+function fmtDate(str) {
+  if (!str) return '—';
+  return str.replace('T', ' ').slice(0, 16);
 }
 
-function escJs(str) {
-  if (str == null) return '';
-  return String(str).replace(/\\/g, '\\\\').replace(/'/g, "\\'");
+function sourceColor(src) {
+  const map = {
+    NORMAL:  'bg-gray-100 text-gray-500',
+    SOS:     'bg-red-100 text-red-600',
+    WEATHER: 'bg-sky-100 text-sky-600',
+    GAP:     'bg-teal-100 text-teal-600'
+  };
+  const cls = map[src] || 'bg-gray-100 text-gray-400';
+  return `<span class="${cls} text-xs px-2 py-0.5 rounded-full">${src || 'NORMAL'}</span>`;
 }
 
-// element id 에서 특수문자 제거
-function safe(str) {
-  if (str == null) return '';
-  return String(str).replace(/[^a-zA-Z0-9_-]/g, '_');
+function escHtml(s) {
+  if (s == null) return '';
+  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+function escJs(s) {
+  if (s == null) return '';
+  return String(s).replace(/\\/g,'\\\\').replace(/'/g,"\\'");
+}
+function safe(s) {
+  if (s == null) return '';
+  return String(s).replace(/[^a-zA-Z0-9_-]/g,'_');
 }
