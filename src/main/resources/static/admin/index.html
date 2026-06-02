@@ -146,21 +146,28 @@
           <table class="w-full">
             <thead class="bg-gray-50 text-gray-400 text-xs uppercase sticky top-0 z-10">
               <tr>
+                <th onclick="sortTripPlaces('tripPlaceId')"  class="px-3 py-3 text-left cursor-pointer select-none hover:bg-gray-100 whitespace-nowrap">장소 ID <span id="si-tripPlaceId" class="text-gray-300">⇅</span></th>
                 <th onclick="sortTripPlaces('day')"          class="px-3 py-3 text-left cursor-pointer select-none hover:bg-gray-100 whitespace-nowrap">일차 <span id="si-day" class="text-gray-300">⇅</span></th>
+                <th class="px-3 py-3 text-left whitespace-nowrap">날짜</th>
                 <th onclick="sortTripPlaces('visitOrder')"   class="px-3 py-3 text-left cursor-pointer select-none hover:bg-gray-100 whitespace-nowrap">순서 <span id="si-visitOrder" class="text-gray-300">⇅</span></th>
                 <th onclick="sortTripPlaces('name')"         class="px-3 py-3 text-left cursor-pointer select-none hover:bg-gray-100 whitespace-nowrap">장소명 <span id="si-name" class="text-gray-300">⇅</span></th>
-                <th class="px-3 py-3 text-left whitespace-nowrap">Google ID</th>
+                <th class="px-3 py-3 text-left whitespace-nowrap">Google Place ID</th>
                 <th onclick="sortTripPlaces('visitTime')"    class="px-3 py-3 text-left cursor-pointer select-none hover:bg-gray-100 whitespace-nowrap">방문시간 <span id="si-visitTime" class="text-gray-300">⇅</span></th>
                 <th class="px-3 py-3 text-left whitespace-nowrap">종료시간</th>
+                <th onclick="sortTripPlaces('transportMode')" class="px-3 py-3 text-left cursor-pointer select-none hover:bg-gray-100 whitespace-nowrap">이동수단 <span id="si-transportMode" class="text-gray-300">⇅</span></th>
+                <th class="px-3 py-3 text-left whitespace-nowrap">이동시간차</th>
+                <th class="px-3 py-3 text-left whitespace-nowrap">위도</th>
+                <th class="px-3 py-3 text-left whitespace-nowrap">경도</th>
+                <th class="px-3 py-3 text-left whitespace-nowrap">카테고리</th>
+                <th onclick="sortTripPlaces('placeType')"    class="px-3 py-3 text-left cursor-pointer select-none hover:bg-gray-100 whitespace-nowrap">타입 <span id="si-placeType" class="text-gray-300">⇅</span></th>
+                <th class="px-3 py-3 text-left whitespace-nowrap">스페이스</th>
+                <th class="px-3 py-3 text-left whitespace-nowrap">분위기</th>
                 <th class="px-3 py-3 text-left whitespace-nowrap">메모</th>
                 <th onclick="sortTripPlaces('source')"       class="px-3 py-3 text-left cursor-pointer select-none hover:bg-gray-100 whitespace-nowrap">출처 <span id="si-source" class="text-gray-300">⇅</span></th>
-                <th onclick="sortTripPlaces('transportMode')" class="px-3 py-3 text-left cursor-pointer select-none hover:bg-gray-100 whitespace-nowrap">이동수단 <span id="si-transportMode" class="text-gray-300">⇅</span></th>
-                <th class="px-3 py-3 text-left whitespace-nowrap">위도/경도</th>
-                <th class="px-3 py-3 text-left whitespace-nowrap">카테고리</th>
-                <th onclick="sortTripPlaces('placeType')"    class="px-3 py-3 text-left cursor-pointer select-none hover:bg-gray-100 whitespace-nowrap">타입/스페이스/분위기 <span id="si-placeType" class="text-gray-300">⇅</span></th>
-                <th onclick="sortTripPlaces('rating')"       class="px-3 py-3 text-left cursor-pointer select-none hover:bg-gray-100 whitespace-nowrap">평점 <span id="si-rating" class="text-gray-300">⇅</span></th>
                 <th class="px-3 py-3 text-left whitespace-nowrap">영업시간</th>
-                <th class="px-3 py-3 text-left whitespace-nowrap">리뷰 데이터</th>
+                <th class="px-3 py-3 text-left whitespace-nowrap">리뷰 요약</th>
+                <th onclick="sortTripPlaces('rating')"       class="px-3 py-3 text-left cursor-pointer select-none hover:bg-gray-100 whitespace-nowrap">평점 <span id="si-rating" class="text-gray-300">⇅</span></th>
+                <th class="px-3 py-3 text-left whitespace-nowrap">리뷰수</th>
                 <th class="px-3 py-3 text-left whitespace-nowrap">분석상태</th>
                 <th class="px-3 py-3 text-left whitespace-nowrap">액션</th>
               </tr>

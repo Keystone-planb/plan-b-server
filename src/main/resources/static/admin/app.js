@@ -20,7 +20,8 @@ let tripPlacesSortDir    = 'asc';
 const tripPlaceJsonData = {};    // { tripPlaceId: { openingHours, reviewData } }
 const pollingTimers     = {};    // { googlePlaceId: intervalId }
 
-const SORT_COLS = ['day','visitOrder','name','visitTime','source','transportMode','placeType','rating'];
+// 정렬 가능한 컬럼 목록 (tripPlaceId 추가)
+const SORT_COLS = ['tripPlaceId','day','visitOrder','name','visitTime','source','transportMode','placeType','rating'];
 
 // ════════════════════════════════════════════════════════════════════════════
 // 초기 진입
@@ -48,8 +49,12 @@ async function handleLogin(e) {
         email:    document.getElementById('inp-email').value,
         password: document.getElementById('inp-pw').value
       })
-    }).then(res => {
-      if (!res.ok) return res.json().then(d => { throw new Error(d.message || '로그인 실패'); });
+    }).then(async res => {
+      if (!res.ok) {
+        let msg = `로그인 실패 (${res.status})`;
+        try { const d = await res.json(); msg = d.message || msg; } catch (_) {}
+        throw new Error(msg);
+      }
       return res.json();
     });
 
@@ -300,6 +305,19 @@ function renderSortedTripPlaces() {
   renderTripPlacesTable(sorted, currentTripTitle);
 }
 
+// ── 리뷰 요약 추출 헬퍼 ────────────────────────────────────────────────────
+// reviewData JSONB에서 요약 텍스트를 꺼냄. 없으면 null 반환.
+function extractReviewSummary(reviewDataStr) {
+  if (!reviewDataStr) return null;
+  try {
+    const d = JSON.parse(reviewDataStr);
+    // 다양한 필드명 시도 (AI 분석 결과 구조에 따라 다를 수 있음)
+    return d.reviewSummary ?? d.summary ?? d.googleReview ?? d.naverReview ?? null;
+  } catch {
+    return null;
+  }
+}
+
 // ── 여행 장소 테이블 렌더링 (전체 필드) ───────────────────────────────────
 function renderTripPlacesTable(places, title) {
   hide('trip-places-loading');
@@ -322,13 +340,19 @@ function renderTripPlacesTable(places, title) {
       ? '<span class="bg-green-100 text-green-700 text-xs font-semibold px-2 py-0.5 rounded-full">완료</span>'
       : '<span class="bg-yellow-100 text-yellow-700 text-xs font-semibold px-2 py-0.5 rounded-full">미완료</span>';
 
+    // 리뷰 요약: JSON 파싱 → 텍스트 인라인 표시 + 전체 보기 버튼
+    const reviewSummary = extractReviewSummary(p.reviewData);
+
     return `
     <tr id="tpr-${sid}" class="hover:bg-gray-50 transition">
-      <!-- 일차 / 날짜 -->
+      <!-- 장소 ID (tripPlaceId) -->
+      <td class="px-3 py-3 text-gray-500 font-mono text-xs whitespace-nowrap">${p.tripPlaceId ?? '—'}</td>
+      <!-- 일차 -->
       <td class="px-3 py-3 text-center whitespace-nowrap">
         <span class="font-bold text-indigo-500">${p.day}일차</span>
-        <div class="text-gray-400 text-xs">${p.date}</div>
       </td>
+      <!-- 날짜 -->
+      <td class="px-3 py-3 text-gray-400 text-xs whitespace-nowrap">${p.date ?? '—'}</td>
       <!-- 방문 순서 -->
       <td class="px-3 py-3 text-center text-gray-600">${p.visitOrder}</td>
       <!-- 장소명 -->
@@ -342,56 +366,78 @@ function renderTripPlacesTable(places, title) {
       <td class="px-3 py-3 text-gray-600 whitespace-nowrap">${p.visitTime || '—'}</td>
       <!-- 종료시간 -->
       <td class="px-3 py-3 text-gray-600 whitespace-nowrap">${p.endTime || '—'}</td>
-      <!-- 메모 -->
-      <td class="px-3 py-3 text-gray-500 text-xs max-w-[120px]">
-        <div class="truncate" title="${escHtml(p.memo)}">${escHtml(p.memo || '—')}</div>
-      </td>
-      <!-- 출처 -->
-      <td class="px-3 py-3">${sourceColor(p.source)}</td>
       <!-- 이동수단 -->
       <td class="px-3 py-3">
         ${p.transportMode
           ? `<span class="bg-blue-100 text-blue-700 text-xs px-2 py-0.5 rounded-full">${p.transportMode}</span>`
           : '<span class="text-gray-300 text-xs">—</span>'}
       </td>
-      <!-- 위도/경도 -->
-      <td class="px-3 py-3 text-xs text-gray-500 whitespace-nowrap">
-        ${p.latitude != null
-          ? `${p.latitude.toFixed(5)}<br>${p.longitude.toFixed(5)}`
-          : '—'}
+      <!-- 이동시간차 (transitGapMinutes) — 엔티티에 없어 항상 정보 없음 -->
+      <td class="px-3 py-3 text-gray-300 text-xs text-center">—</td>
+      <!-- 위도 -->
+      <td class="px-3 py-3 text-xs text-gray-500 whitespace-nowrap font-mono">
+        ${p.latitude != null ? p.latitude.toFixed(6) : '—'}
+      </td>
+      <!-- 경도 -->
+      <td class="px-3 py-3 text-xs text-gray-500 whitespace-nowrap font-mono">
+        ${p.longitude != null ? p.longitude.toFixed(6) : '—'}
       </td>
       <!-- 카테고리 -->
       <td class="px-3 py-3 text-xs text-gray-500 max-w-[100px]">
         <div class="truncate" title="${escHtml(p.category)}">${escHtml(p.category || '—')}</div>
       </td>
-      <!-- 타입 / 스페이스 / 분위기 -->
+      <!-- 타입 -->
       <td class="px-3 py-3">
-        <div class="flex flex-col gap-1">
-          ${p.placeType ? `<span class="bg-indigo-100 text-indigo-700 text-xs px-2 py-0.5 rounded-full">${p.placeType}</span>` : ''}
-          ${p.space     ? `<span class="bg-purple-100 text-purple-700 text-xs px-2 py-0.5 rounded-full">${p.space}</span>`    : ''}
-          ${p.mood      ? `<span class="bg-pink-100 text-pink-700 text-xs px-2 py-0.5 rounded-full">${p.mood}</span>`         : ''}
-          ${!p.placeType && !p.space && !p.mood ? '<span class="text-gray-300 text-xs">—</span>' : ''}
-        </div>
+        ${p.placeType
+          ? `<span class="bg-indigo-100 text-indigo-700 text-xs px-2 py-0.5 rounded-full">${p.placeType}</span>`
+          : '<span class="text-gray-300 text-xs">—</span>'}
       </td>
-      <!-- 평점 -->
-      <td class="px-3 py-3 whitespace-nowrap text-xs">
-        ${p.rating != null
-          ? `⭐ ${p.rating.toFixed(1)}<div class="text-gray-400">(${p.userRatingsTotal ?? 0})</div>`
-          : '—'}
+      <!-- 스페이스 -->
+      <td class="px-3 py-3">
+        ${p.space
+          ? `<span class="bg-purple-100 text-purple-700 text-xs px-2 py-0.5 rounded-full">${p.space}</span>`
+          : '<span class="text-gray-300 text-xs">—</span>'}
       </td>
+      <!-- 분위기 -->
+      <td class="px-3 py-3">
+        ${p.mood
+          ? `<span class="bg-pink-100 text-pink-700 text-xs px-2 py-0.5 rounded-full">${p.mood}</span>`
+          : '<span class="text-gray-300 text-xs">—</span>'}
+      </td>
+      <!-- 메모 -->
+      <td class="px-3 py-3 text-gray-500 text-xs max-w-[120px]">
+        <div class="truncate" title="${escHtml(p.memo)}">${escHtml(p.memo || '—')}</div>
+      </td>
+      <!-- 출처 -->
+      <td class="px-3 py-3">${sourceColor(p.source)}</td>
       <!-- 영업시간 (JSONB) -->
       <td class="px-3 py-3">
         ${p.openingHours
           ? `<button onclick="showJsonDetail(${p.tripPlaceId}, 'openingHours', '영업시간')"
-                     class="text-xs text-blue-500 hover:text-blue-700 underline">보기</button>`
+                     class="text-xs text-blue-500 hover:text-blue-700 underline whitespace-nowrap">보기</button>`
           : '<span class="text-gray-300 text-xs">—</span>'}
       </td>
-      <!-- 리뷰 데이터 (JSONB) -->
-      <td class="px-3 py-3">
-        ${p.reviewData
-          ? `<button onclick="showJsonDetail(${p.tripPlaceId}, 'reviewData', '리뷰 데이터')"
-                     class="text-xs text-blue-500 hover:text-blue-700 underline">보기</button>`
-          : '<span class="text-gray-300 text-xs">—</span>'}
+      <!-- 리뷰 요약 (reviewData 파싱) -->
+      <td class="px-3 py-3 max-w-[180px]">
+        ${p.reviewData ? `
+          <div class="flex flex-col gap-1">
+            ${reviewSummary
+              ? `<div class="text-xs text-gray-600 truncate" title="${escHtml(reviewSummary)}">${escHtml(reviewSummary)}</div>`
+              : ''}
+            <button onclick="showJsonDetail(${p.tripPlaceId}, 'reviewData', '리뷰 전체')"
+                    class="text-xs text-blue-500 hover:text-blue-700 underline whitespace-nowrap self-start">
+              ${reviewSummary ? '전체 보기' : '보기'}
+            </button>
+          </div>
+        ` : '<span class="text-gray-300 text-xs">—</span>'}
+      </td>
+      <!-- 평점 -->
+      <td class="px-3 py-3 whitespace-nowrap text-xs">
+        ${p.rating != null ? `⭐ ${p.rating.toFixed(1)}` : '—'}
+      </td>
+      <!-- 리뷰수 -->
+      <td class="px-3 py-3 text-xs text-gray-500 text-center">
+        ${p.userRatingsTotal != null ? p.userRatingsTotal.toLocaleString() : '—'}
       </td>
       <!-- 분석상태 -->
       <td class="px-3 py-3" id="tpr-status-${sid}">${statusBadge}</td>
