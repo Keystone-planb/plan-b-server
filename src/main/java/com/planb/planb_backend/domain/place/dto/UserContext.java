@@ -46,6 +46,14 @@ public class UserContext {
      */
     private LocalDateTime mustBeOpenAt;
 
+    /**
+     * [기능 6 — 틈새 추천] place 이벤트에 포함할 제안 시각 ("HH:mm")
+     * 이전 일정 끝 시각(suggestedVisitTime) ~ 이후 일정 시작 시각(suggestedEndTime)
+     * null 이면 place 이벤트에서 생략 (SOS / 날씨 대안에서는 null)
+     */
+    private String suggestedVisitTime;
+    private String suggestedEndTime;
+
     /** RecommendationService에서 사용하는 카테고리 조회 편의 메서드 */
     public String getRequestedCategory() {
         return this.selectedType;

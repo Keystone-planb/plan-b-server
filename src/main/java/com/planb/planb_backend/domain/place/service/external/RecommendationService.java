@@ -624,7 +624,10 @@ public class RecommendationService {
                                         log.info("[SSE] place 이벤트 전송 ({}/{}): {}",
                                                 idx, FINAL_TOP_N, analyzed.getName());
                                         sendSse(emitter, done, "place",
-                                                com.planb.planb_backend.domain.recommendation.dto.PlaceResult.from(analyzed));
+                                                com.planb.planb_backend.domain.recommendation.dto.PlaceResult.from(
+                                                        analyzed,
+                                                        context.getSuggestedVisitTime(),
+                                                        context.getSuggestedEndTime()));
                                     }
                                 })
                                 .exceptionally(ex -> {

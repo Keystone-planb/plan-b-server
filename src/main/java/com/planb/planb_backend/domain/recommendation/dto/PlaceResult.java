@@ -39,9 +39,23 @@ public class PlaceResult {
     private String photoUrl;
     private LocalDateTime lastSyncedAt;
 
+    /**
+     * [기능 6 — 틈새 추천] 이 장소를 일정에 추가할 때 사용할 제안 시각 ("HH:mm")
+     * null 이면 프론트가 직접 시간 입력 (SOS / 날씨 대안)
+     * 값이 있으면 프론트가 addLocation 호출 시 visitTime/endTime 으로 그대로 전달
+     */
+    private String suggestedVisitTime;
+    private String suggestedEndTime;
+
     private static final ObjectMapper mapper = new ObjectMapper();
 
+    /** SOS / 날씨 대안용: 제안 시각 없음 */
     public static PlaceResult from(Place place) {
+        return from(place, null, null);
+    }
+
+    /** 틈새 추천용: 제안 시각 포함 */
+    public static PlaceResult from(Place place, String suggestedVisitTime, String suggestedEndTime) {
         return PlaceResult.builder()
                 .placeId(place.getId())
                 .googlePlaceId(place.getGooglePlaceId())
@@ -66,6 +80,8 @@ public class PlaceResult {
                 .priceLevel(place.getPriceLevel())
                 .photoUrl(place.getPhotoUrl())
                 .lastSyncedAt(place.getLastSyncedAt())
+                .suggestedVisitTime(suggestedVisitTime)
+                .suggestedEndTime(suggestedEndTime)
                 .build();
     }
 

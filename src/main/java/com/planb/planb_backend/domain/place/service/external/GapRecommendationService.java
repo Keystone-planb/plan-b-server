@@ -16,6 +16,7 @@ import java.time.Duration;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.LocalTime;
+import java.time.format.DateTimeFormatter;
 import java.util.Map;
 
 import org.springframework.stereotype.Service;
@@ -106,6 +107,11 @@ public class GapRecommendationService {
         // 영업시간 검사 시각: 이동 절반 시간 이후 도착 시점 추정
         LocalDateTime checkAt = beforeEnd.plusMinutes(Math.max(5, travelMin / 2));
 
+        // 제안 시각: 이전 일정 끝 ~ 이후 일정 시작 → place 이벤트에 포함되어 프론트가 addLocation 시 사용
+        DateTimeFormatter hhmm = DateTimeFormatter.ofPattern("HH:mm");
+        String suggestedVisitTime = beforeEnd.format(hhmm);
+        String suggestedEndTime   = afterStart.format(hhmm);
+
         UserContext ctx = UserContext.builder()
                 .userId(req.getUserId())
                 .tripId(tripId)
@@ -120,6 +126,8 @@ public class GapRecommendationService {
                 .nextLat(aPlace != null ? aPlace.getLatitude() : null)
                 .nextLng(aPlace != null ? aPlace.getLongitude() : null)
                 .mustBeOpenAt(checkAt)
+                .suggestedVisitTime(suggestedVisitTime)
+                .suggestedEndTime(suggestedEndTime)
                 .build();
 
         log.info("[GapRecommendation] tripId={}, gap={}분, A→B 이동={}분({}), 가용={}분, 반경={}분, 영업검사={}",
