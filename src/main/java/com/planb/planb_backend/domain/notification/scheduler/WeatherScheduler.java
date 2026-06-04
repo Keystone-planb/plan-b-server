@@ -118,9 +118,13 @@ public class WeatherScheduler {
         }
         log.info("[WeatherScheduler]   ✓ 공간 타입 통과 — planId={}, space={}", planId, originalPlace.getSpace());
 
-        // [Skip 3] 24시간 내 동일 planId 알림 발송 이력
-        if (notificationRepository.existsByPlanIdAndCreatedAtAfter(planId, now.minusHours(24))) {
-            log.info("[WeatherScheduler]   ✗ SKIP — 24시간 내 중복 알림 존재 (planId={})", planId);
+        // [Skip 3] 24시간 내 동일 planId + 동일 장소(좌표) 알림 발송 이력
+        // 장소를 교체한 경우(좌표 변경)는 중복으로 보지 않아 새 알림 허용
+        if (notificationRepository.existsByPlanIdAndCreatedAtAfterAndOriginalLatAndOriginalLng(
+                planId, now.minusHours(24),
+                originalPlace.getLatitude(), originalPlace.getLongitude())) {
+            log.info("[WeatherScheduler]   ✗ SKIP — 24시간 내 동일 장소 중복 알림 존재 (planId={}, lat={}, lng={})",
+                    planId, originalPlace.getLatitude(), originalPlace.getLongitude());
             return;
         }
         log.info("[WeatherScheduler]   ✓ 중복 알림 없음 — planId={}", planId);
