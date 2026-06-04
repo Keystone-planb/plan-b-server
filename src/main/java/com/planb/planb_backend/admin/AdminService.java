@@ -54,7 +54,7 @@ public class AdminService {
 
         adminNotificationRepository.deleteByUserId(userId);
         adminEmailAuthRepository.deleteByEmail(user.getEmail());
-        refreshTokenRepository.findByUser(user).ifPresent(refreshTokenRepository::delete);
+        refreshTokenRepository.deleteByUser(user);
         userPreferenceRepository.deleteAll(userPreferenceRepository.findByUserId(userId));
 
         List<Trip> trips = tripRepository.findByUserOrderByCreatedAtDesc(user);

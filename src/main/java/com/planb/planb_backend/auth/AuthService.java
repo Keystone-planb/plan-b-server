@@ -118,22 +118,20 @@ public class AuthService {
         User user = userRepository.findByEmail(email)
                 .orElseThrow(() -> new IllegalArgumentException("사용자를 찾을 수 없습니다."));
         user.withdraw();
-        refreshTokenRepository.findByUser(user)
-                .ifPresent(refreshTokenRepository::delete);
+        refreshTokenRepository.deleteByUser(user);
     }
 
     /**
      * Access + Refresh Token 동시 발급 (로그인 & 소셜 로그인 공용)
-     * - 기존 Refresh Token이 있으면 덮어쓰기
+     * - 멀티 세션: 이미 만료된 토큰만 정리 후 새 토큰 추가 (기존 유효 세션 유지)
      */
     @Transactional
     public AuthResponse issueTokens(User user) {
         String accessToken = jwtProvider.createAccessToken(user.getEmail(), user.getRole().name());
         String refreshTokenValue = jwtProvider.createRefreshToken(user.getId());
 
-        // 기존 토큰 삭제 → flush로 DB 반영 → 새 토큰 저장
-        refreshTokenRepository.deleteByUser(user);
-        refreshTokenRepository.flush();
+        // 해당 유저의 만료된 토큰만 삭제 (유효한 다른 세션은 유지)
+        refreshTokenRepository.deleteExpiredByUser(user, LocalDateTime.now());
 
         refreshTokenRepository.save(RefreshToken.builder()
                 .user(user)

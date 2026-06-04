@@ -17,9 +17,9 @@ public class RefreshToken {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
-    // users 테이블과 1:1 관계 (유저당 토큰 1개)
-    @OneToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "user_id", nullable = false, unique = true)
+    // users 테이블과 1:N 관계 (멀티 세션: 유저당 토큰 여러 개 허용)
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "user_id", nullable = false)
     private User user;
 
     @Column(nullable = false, length = 512)
