@@ -26,11 +26,14 @@ public class ScoringStrategy {
         double filterMultiplier = 1.0;
 
         // (1) Space 필터
-        if (context.getSelectedSpace() != null && candidate.getSpace() != null) {
-            if (context.getSelectedSpace().equalsIgnoreCase(candidate.getSpace().name())) {
-                filterMultiplier *= 2.0;
+        // space=null(AI 미분석) 장소는 약한 패널티 적용 — 필터 완전 무시 시 야외 장소처럼 동작하는 버그 방지
+        if (context.getSelectedSpace() != null) {
+            if (candidate.getSpace() == null) {
+                filterMultiplier *= 0.6; // 미분석 장소: 약한 패널티
+            } else if (context.getSelectedSpace().equalsIgnoreCase(candidate.getSpace().name())) {
+                filterMultiplier *= 2.0; // 일치: 보너스
             } else {
-                filterMultiplier *= 0.2;
+                filterMultiplier *= 0.2; // 불일치: 강한 패널티
             }
         }
 
