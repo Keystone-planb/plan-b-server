@@ -66,4 +66,21 @@ public class AdminController {
     public ResponseEntity<List<AdminService.AdminPlaceDto>> getAllPlaces() {
         return ResponseEntity.ok(adminService.getAllPlaces());
     }
+
+    // ── 무드 선호도 조회 ───────────────────────────────────────────────────
+
+    @Operation(summary = "특정 사용자의 무드 선호도 조회")
+    @GetMapping("/users/{userId}/preferences")
+    public ResponseEntity<List<AdminService.AdminMoodPreferenceDto>> getUserMoodPreferences(
+            @PathVariable Long userId) {
+        return ResponseEntity.ok(adminService.getUserMoodPreferences(userId));
+    }
+
+    // ── 알림 관제 ──────────────────────────────────────────────────────────
+
+    @Operation(summary = "날씨 알림 전체 목록 조회 (최신순)")
+    @GetMapping("/notifications")
+    public ResponseEntity<List<AdminService.AdminNotificationDto>> getAllNotifications() {
+        return ResponseEntity.ok(adminService.getAllNotifications());
+    }
 }

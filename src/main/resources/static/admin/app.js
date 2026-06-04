@@ -6,8 +6,9 @@
 let accessToken   = localStorage.getItem('admin_token')   || null;
 let refreshToken  = localStorage.getItem('admin_refresh')  || null;
 
-let allUsers  = [];
-let allPlaces = [];
+let allUsers         = [];
+let allPlaces        = [];
+let allNotifications = [];
 
 let currentUserId    = null;
 let currentTripId    = null;
@@ -120,7 +121,7 @@ function showAdmin() {
 // 탭 전환
 // ════════════════════════════════════════════════════════════════════════════
 function switchTab(name) {
-  ['users', 'places'].forEach(t => {
+  ['users', 'places', 'notifications'].forEach(t => {
     document.getElementById(`tab-${t}`).classList.toggle('hidden', t !== name);
     const btn = document.getElementById(`tab-btn-${t}`);
     if (t === name) {
@@ -131,7 +132,8 @@ function switchTab(name) {
       btn.classList.add('text-gray-400', 'border-transparent', 'font-medium');
     }
   });
-  if (name === 'places' && allPlaces.length === 0) loadDbPlaces();
+  if (name === 'places'        && allPlaces.length        === 0) loadDbPlaces();
+  if (name === 'notifications' && allNotifications.length  === 0) loadNotifications();
 }
 
 // ════════════════════════════════════════════════════════════════════════════
@@ -176,6 +178,13 @@ function renderUsersTable(users) {
         ${u.status === 'ACTIVE'
           ? '<span class="bg-green-100 text-green-700 text-xs px-2 py-0.5 rounded-full">활성</span>'
           : '<span class="bg-gray-200 text-gray-500 text-xs px-2 py-0.5 rounded-full">탈퇴</span>'}
+      </td>
+      <!-- 무드 선호도 배지 (클릭 시 로드) -->
+      <td class="px-4 py-3" id="mood-cell-${u.id}" onclick="event.stopPropagation()">
+        <button onclick="loadUserMoodBadges(${u.id})"
+                class="text-xs text-indigo-400 hover:text-indigo-600 underline whitespace-nowrap">
+          보기
+        </button>
       </td>
       <td class="px-4 py-3 text-gray-400">${fmtDate(u.createdAt)}</td>
       <td class="px-4 py-3" onclick="event.stopPropagation()">
@@ -500,6 +509,104 @@ function closeTripPlacesPanel() {
   currentTripTitle = null;
   currentTripPlaces = [];
   hide('trip-places-panel');
+}
+
+// ── 무드 선호도 배지 로드 ─────────────────────────────────────────────────
+const MOOD_STYLE = {
+  HEALING: 'bg-green-100 text-green-700',
+  ACTIVE:  'bg-orange-100 text-orange-700',
+  TRENDY:  'bg-pink-100 text-pink-700',
+  CLASSIC: 'bg-amber-100 text-amber-700',
+  LOCAL:   'bg-teal-100 text-teal-700',
+};
+const MOOD_LABEL = {
+  HEALING: '힐링', ACTIVE: '액티브', TRENDY: '트렌디', CLASSIC: '클래식', LOCAL: '로컬'
+};
+
+async function loadUserMoodBadges(userId) {
+  const cell = document.getElementById(`mood-cell-${userId}`);
+  if (!cell) return;
+  cell.innerHTML = '<span class="text-xs text-gray-300">로딩...</span>';
+  try {
+    const prefs = await apiFetch(`/api/admin/users/${userId}/preferences`);
+    if (!prefs || prefs.length === 0) {
+      cell.innerHTML = '<span class="text-xs text-gray-300">이력 없음</span>';
+      return;
+    }
+    cell.innerHTML = prefs.map(p => {
+      const cls   = MOOD_STYLE[p.mood]  || 'bg-gray-100 text-gray-500';
+      const label = MOOD_LABEL[p.mood]  || p.mood;
+      const score = p.score != null ? p.score.toFixed(1) : '0';
+      return `<span class="${cls} text-xs font-semibold px-2 py-0.5 rounded-full mr-1 whitespace-nowrap"
+                    title="점수: ${score}">${label} ${score}</span>`;
+    }).join('');
+  } catch (_) {
+    cell.innerHTML = '<span class="text-xs text-red-400">오류</span>';
+  }
+}
+
+// ════════════════════════════════════════════════════════════════════════════
+// ── 알림 관제 탭
+// ════════════════════════════════════════════════════════════════════════════
+async function loadNotifications() {
+  show('n-loading'); hide('n-table-wrap'); hide('n-empty');
+  try {
+    allNotifications = await apiFetch('/api/admin/notifications');
+    updateNotificationStats(allNotifications);
+    applyNotificationFilter();
+  } catch (ex) {
+    document.getElementById('n-loading').textContent = '불러오기 실패: ' + ex.message;
+  }
+}
+
+function applyNotificationFilter() {
+  const q    = (document.getElementById('n-search').value || '').toLowerCase();
+  const push = document.getElementById('n-filter-push').value;
+  const f = allNotifications.filter(n =>
+    (!q    || String(n.userId || '').includes(q) || String(n.planId || '').includes(q)) &&
+    (!push || n.pushStatus === push)
+  );
+  renderNotificationsTable(f);
+  document.getElementById('n-count').textContent =
+    `총 ${f.length}건 (전체 ${allNotifications.length}건)`;
+}
+
+function updateNotificationStats(list) {
+  const sent = list.filter(n => n.pushStatus === '발송됨').length;
+  document.getElementById('n-stat-total').textContent   = list.length;
+  document.getElementById('n-stat-sent').textContent    = sent;
+  document.getElementById('n-stat-pending').textContent = list.length - sent;
+}
+
+function renderNotificationsTable(list) {
+  hide('n-loading');
+  if (list.length === 0) { show('n-empty'); hide('n-table-wrap'); return; }
+  hide('n-empty'); show('n-table-wrap');
+
+  document.getElementById('n-tbody').innerHTML = list.map(n => {
+    const pushBadge = n.pushStatus === '발송됨'
+      ? '<span class="bg-green-100 text-green-700 text-xs font-semibold px-2 py-0.5 rounded-full">발송됨</span>'
+      : '<span class="bg-yellow-100 text-yellow-700 text-xs font-semibold px-2 py-0.5 rounded-full">미발송</span>';
+
+    return `
+    <tr class="hover:bg-gray-50 transition">
+      <td class="px-4 py-3 text-gray-400 font-mono text-xs whitespace-nowrap">${n.notificationId ?? '—'}</td>
+      <td class="px-4 py-3 text-gray-600 text-xs">${n.userId ?? '—'}</td>
+      <td class="px-4 py-3 text-gray-600 text-xs">${n.planId ?? '—'}</td>
+      <td class="px-4 py-3">
+        <span class="bg-sky-100 text-sky-700 text-xs px-2 py-0.5 rounded-full">${escHtml(n.type || '—')}</span>
+      </td>
+      <td class="px-4 py-3 text-xs text-gray-700 max-w-[160px]">
+        <div class="truncate" title="${escHtml(n.title)}">${escHtml(n.title || '—')}</div>
+      </td>
+      <td class="px-4 py-3 text-center text-xs font-semibold text-blue-600 whitespace-nowrap">
+        ${escHtml(n.precipitationProb || '—')}
+      </td>
+      <td class="px-4 py-3">${pushBadge}</td>
+      <td class="px-4 py-3 text-gray-400 text-xs whitespace-nowrap">${fmtDate(n.pushSentAt)}</td>
+      <td class="px-4 py-3 text-gray-400 text-xs whitespace-nowrap">${fmtDate(n.createdAt)}</td>
+    </tr>`;
+  }).join('');
 }
 
 // ════════════════════════════════════════════════════════════════════════════

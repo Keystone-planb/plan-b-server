@@ -64,6 +64,10 @@
               class="tab-btn px-5 py-3 font-medium text-gray-400 hover:text-gray-700 text-sm border-b-2 border-transparent transition">
         장소 관리
       </button>
+      <button onclick="switchTab('notifications')" id="tab-btn-notifications"
+              class="tab-btn px-5 py-3 font-medium text-gray-400 hover:text-gray-700 text-sm border-b-2 border-transparent transition">
+        알림 관제
+      </button>
     </div>
   </div>
 
@@ -98,6 +102,7 @@
                 <th class="px-4 py-3 text-left">권한</th>
                 <th class="px-4 py-3 text-left">가입방법</th>
                 <th class="px-4 py-3 text-left">상태</th>
+                <th class="px-4 py-3 text-left">무드 선호도</th>
                 <th class="px-4 py-3 text-left">가입일</th>
                 <th class="px-4 py-3 text-left">액션</th>
               </tr>
@@ -257,6 +262,66 @@
         <div id="p-count" class="px-5 py-2 text-xs text-gray-400 text-right border-t"></div>
       </section>
     </div><!-- /tab-places -->
+
+    <!-- ══════════ 알림 관제 탭 ══════════ -->
+    <div id="tab-notifications" class="hidden space-y-6">
+
+      <!-- 통계 카드 -->
+      <div class="grid grid-cols-3 gap-4">
+        <div class="bg-white rounded-xl shadow-sm p-5">
+          <div class="text-xs text-gray-400 mb-1">전체 알림</div>
+          <div id="n-stat-total" class="text-3xl font-bold text-gray-800">—</div>
+        </div>
+        <div class="bg-white rounded-xl shadow-sm p-5">
+          <div class="text-xs text-gray-400 mb-1">푸시 발송됨</div>
+          <div id="n-stat-sent" class="text-3xl font-bold text-green-600">—</div>
+        </div>
+        <div class="bg-white rounded-xl shadow-sm p-5">
+          <div class="text-xs text-gray-400 mb-1">푸시 미발송</div>
+          <div id="n-stat-pending" class="text-3xl font-bold text-yellow-500">—</div>
+        </div>
+      </div>
+
+      <!-- 알림 테이블 -->
+      <section class="bg-white rounded-xl shadow-sm overflow-hidden">
+        <div class="px-5 py-4 border-b flex items-center gap-2 flex-wrap">
+          <input id="n-search" type="text" placeholder="사용자ID / planId 검색..."
+                 oninput="applyNotificationFilter()"
+                 class="border border-gray-300 rounded-lg px-3 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-indigo-400 w-52" />
+          <select id="n-filter-push" onchange="applyNotificationFilter()"
+                  class="border border-gray-300 rounded-lg px-3 py-1.5 text-xs focus:outline-none w-32">
+            <option value="">전체 상태</option>
+            <option value="발송됨">발송됨</option>
+            <option value="미발송">미발송</option>
+          </select>
+          <button onclick="loadNotifications()"
+                  class="bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-semibold px-3 py-1.5 rounded-lg transition ml-auto">
+            새로고침
+          </button>
+        </div>
+        <div id="n-loading" class="py-10 text-center text-gray-400 text-xs">불러오는 중...</div>
+        <div id="n-table-wrap" class="overflow-x-auto hidden">
+          <table class="w-full">
+            <thead class="bg-gray-50 text-gray-400 text-xs uppercase sticky top-0 z-10">
+              <tr>
+                <th class="px-4 py-3 text-left whitespace-nowrap">알림 ID</th>
+                <th class="px-4 py-3 text-left whitespace-nowrap">사용자 ID</th>
+                <th class="px-4 py-3 text-left whitespace-nowrap">Plan ID</th>
+                <th class="px-4 py-3 text-left whitespace-nowrap">타입</th>
+                <th class="px-4 py-3 text-left whitespace-nowrap">제목</th>
+                <th class="px-4 py-3 text-left whitespace-nowrap">강수 확률</th>
+                <th class="px-4 py-3 text-left whitespace-nowrap">푸시 상태</th>
+                <th class="px-4 py-3 text-left whitespace-nowrap">푸시 발송 시각</th>
+                <th class="px-4 py-3 text-left whitespace-nowrap">생성 시각</th>
+              </tr>
+            </thead>
+            <tbody id="n-tbody" class="divide-y divide-gray-100"></tbody>
+          </table>
+        </div>
+        <div id="n-empty" class="py-10 text-center text-gray-400 text-xs hidden">알림 데이터가 없습니다.</div>
+        <div id="n-count" class="px-5 py-2 text-xs text-gray-400 text-right border-t"></div>
+      </section>
+    </div><!-- /tab-notifications -->
 
   </main>
 </div><!-- /admin-section -->

@@ -1,5 +1,6 @@
 package com.planb.planb_backend.admin;
 
+import com.planb.planb_backend.domain.notification.entity.Notification;
 import com.planb.planb_backend.domain.place.entity.Place;
 import com.planb.planb_backend.domain.place.repository.PlaceRepository;
 import com.planb.planb_backend.domain.preference.repository.UserPreferenceRepository;
@@ -16,6 +17,7 @@ import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -133,6 +135,23 @@ public class AdminService {
     public List<AdminPlaceDto> getAllPlaces() {
         return placeRepository.findAll(Sort.by(Sort.Direction.DESC, "lastSyncedAt"))
                 .stream().map(AdminPlaceDto::from).toList();
+    }
+
+    // ── 특정 사용자의 무드 선호도 조회 ────────────────────────────────────
+    @Transactional(readOnly = true)
+    public List<AdminMoodPreferenceDto> getUserMoodPreferences(Long userId) {
+        return userPreferenceRepository.findByUserId(userId)
+                .stream()
+                .sorted(Comparator.comparingDouble(up -> -up.getScore()))
+                .map(up -> new AdminMoodPreferenceDto(up.getMood().name(), up.getScore()))
+                .toList();
+    }
+
+    // ── 날씨 알림 전체 목록 (알림 관제 탭) ────────────────────────────────
+    @Transactional(readOnly = true)
+    public List<AdminNotificationDto> getAllNotifications() {
+        return adminNotificationRepository.findAllByOrderByCreatedAtDesc()
+                .stream().map(AdminNotificationDto::from).toList();
     }
 
     // ════════════════════════════════════════════════════════════════════════
@@ -272,6 +291,36 @@ public class AdminService {
                     p.getReviewData(),
                     p.getLastSyncedAt()   != null ? p.getLastSyncedAt().toString() : null,
                     analyzed ? "COMPLETE" : "PENDING");
+        }
+    }
+
+    /** 사용자 무드 선호도 DTO */
+    public record AdminMoodPreferenceDto(String mood, Double score) {}
+
+    /** 날씨 알림 모니터링 DTO */
+    public record AdminNotificationDto(
+            Long    notificationId,
+            Long    userId,
+            Long    planId,
+            String  type,
+            String  title,
+            String  precipitationProb,  // "70%" 형식
+            String  pushStatus,         // "발송됨" / "미발송"
+            String  pushSentAt,
+            String  createdAt
+    ) {
+        static AdminNotificationDto from(Notification n) {
+            return new AdminNotificationDto(
+                    n.getId(),
+                    n.getUserId(),
+                    n.getPlanId(),
+                    n.getType(),
+                    n.getTitle(),
+                    n.getPrecipitationProb() != null ? n.getPrecipitationProb() + "%" : "—",
+                    n.getPushSentAt() != null ? "발송됨" : "미발송",
+                    n.getPushSentAt() != null ? n.getPushSentAt().toString() : null,
+                    n.getCreatedAt()  != null ? n.getCreatedAt().toString()  : null
+            );
         }
     }
 }

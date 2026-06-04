@@ -23,4 +23,7 @@ public interface AdminNotificationRepository extends JpaRepository<Notification,
     @Modifying
     @Query("DELETE FROM Notification n WHERE n.planId IN :planIds")
     void deleteByPlanIdIn(@Param("planIds") List<Long> planIds);
+
+    /** 어드민 알림 관제: 최신순 전체 조회 */
+    List<Notification> findAllByOrderByCreatedAtDesc();
 }
