@@ -27,6 +27,7 @@ import java.util.*;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.Executor;
 import java.util.concurrent.Executors;
+import java.util.concurrent.RejectedExecutionException;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.TimeUnit;
@@ -495,6 +496,14 @@ public class RecommendationService {
      * emitter에 진행 상황을 progress → place(×N) → done 순으로 전송한다.
      */
     void doStreamAsync(UserContext context, SseEmitter emitter) {
+        doStreamAsync(context, emitter, null);
+    }
+
+    /**
+     * onDone: 스트림 완료(정상/오류/타임아웃) 시 호출할 콜백.
+     * GapRecommendationService 에서 per-trip 활성 스트림 제거에 사용.
+     */
+    void doStreamAsync(UserContext context, SseEmitter emitter, Runnable onDone) {
         AtomicBoolean done = new AtomicBoolean(false);
 
         // heartbeat: 15초마다 comment(": ping") 전송 — iOS/ALB idle timeout(60초) 방지
@@ -508,26 +517,27 @@ public class RecommendationService {
             }
         }, 15, 15, TimeUnit.SECONDS);
 
+        Runnable cleanup = () -> {
+            done.set(true);
+            heartbeatTask.cancel(true);
+            heartbeatScheduler.shutdown();
+            if (onDone != null) onDone.run();
+        };
+
         emitter.onTimeout(() -> {
             log.warn("[SSE] 연결 타임아웃");
-            done.set(true);
-            heartbeatTask.cancel(true);
-            heartbeatScheduler.shutdown();
+            cleanup.run();
         });
-        emitter.onCompletion(() -> {
-            done.set(true);
-            heartbeatTask.cancel(true);
-            heartbeatScheduler.shutdown();
-        });
+        emitter.onCompletion(cleanup::run);
         emitter.onError(ex -> {
             log.warn("[SSE] 연결 오류: {}", ex.getMessage());
-            done.set(true);
-            heartbeatTask.cancel(true);
-            heartbeatScheduler.shutdown();
+            cleanup.run();
         });
 
         // 전체 파이프라인을 비동기 실행 → 컨트롤러가 즉시 SseEmitter 반환 가능
         // streamingExecutor 사용: analysisExecutor(DiscardPolicy)와 분리하여 task 폐기 방지
+        // AbortPolicy: 풀+큐 초과 시 RejectedExecutionException → 즉시 error 이벤트 전송
+        try {
         CompletableFuture.runAsync(() -> {
             try {
                 // [S1] 스켈레톤 UI 트리거용 progress 이벤트 즉시 전송
@@ -667,6 +677,18 @@ public class RecommendationService {
                 if (!done.get()) emitter.completeWithError(e);
             }
         }, streamingExecutor);
+        } catch (RejectedExecutionException e) {
+            // streamingExecutor 풀+큐 초과 (AbortPolicy) — 서블릿 스레드 점유 없이 즉시 거부
+            log.warn("[SSE] streamingExecutor 포화 — 요청 거부 (tripId={})", context.getTripId());
+            cleanup.run();
+            try {
+                emitter.send(SseEmitter.event().name("error")
+                        .data(Map.of("message", "서버가 바쁩니다. 잠시 후 다시 시도해주세요.")));
+                emitter.complete();
+            } catch (Exception ex) {
+                emitter.completeWithError(ex);
+            }
+        }
     }
 
     /**

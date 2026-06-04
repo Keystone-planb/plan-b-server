@@ -44,16 +44,19 @@ public class AsyncConfig {
      * SSE 스트리밍 파이프라인 전용 executor.
      * doStreamAsync() 외부 실행에만 사용 — analysisExecutor 포화 시 DiscardPolicy로
      * 스트리밍 task 자체가 폐기되는 문제를 방지한다.
-     * - CallerRunsPolicy: 풀/큐 초과 시 호출 스레드(서블릿 스레드)에서 직접 실행 → 절대 폐기 안 됨
+     * - AbortPolicy: 풀/큐 초과 시 RejectedExecutionException 발생
+     *   → doStreamAsync()에서 즉시 잡아 클라이언트에 error 이벤트 전송 후 emitter.complete()
+     *   → CallerRunsPolicy(이전) 대비: 서블릿 스레드를 90초간 점유하지 않으므로
+     *     Tomcat 스레드 고갈 → 전체 API 500 현상 방지
      */
     @Bean(name = "streamingExecutor")
     public Executor streamingExecutor() {
         ThreadPoolTaskExecutor executor = new ThreadPoolTaskExecutor();
         executor.setCorePoolSize(2);
-        executor.setMaxPoolSize(4);
-        executor.setQueueCapacity(10);
+        executor.setMaxPoolSize(3);
+        executor.setQueueCapacity(5);
         executor.setThreadNamePrefix("sse-streaming-");
-        executor.setRejectedExecutionHandler(new ThreadPoolExecutor.CallerRunsPolicy());
+        executor.setRejectedExecutionHandler(new ThreadPoolExecutor.AbortPolicy());
         // HTTP 요청 스레드의 traceId를 스트리밍 스레드로 전파
         executor.setTaskDecorator(new MdcTaskDecorator());
         executor.initialize();

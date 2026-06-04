@@ -18,6 +18,7 @@ import java.time.LocalDateTime;
 import java.time.LocalTime;
 import java.time.format.DateTimeFormatter;
 import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
 
 import org.springframework.stereotype.Service;
 
@@ -35,6 +36,9 @@ import org.springframework.stereotype.Service;
 @Service
 @RequiredArgsConstructor
 public class GapRecommendationService {
+
+    /** 현재 진행 중인 SSE 스트림의 tripId 집합. 동일 trip 중복 요청 방어에 사용 */
+    private static final ConcurrentHashMap<Long, Boolean> activeStreams = new ConcurrentHashMap<>();
 
     private final TripPlaceRepository tripPlaceRepository;
     private final PlaceRepository placeRepository;
@@ -66,6 +70,18 @@ public class GapRecommendationService {
         }
         if (req.getTripId() != null && !req.getTripId().equals(tripId)) {
             throw new IllegalArgumentException("tripId 가 일정의 trip 과 일치하지 않습니다.");
+        }
+
+        // 동일 trip 중복 스트림 방어: putIfAbsent가 null이 아니면 이미 진행 중
+        if (activeStreams.putIfAbsent(tripId, Boolean.TRUE) != null) {
+            log.warn("[GapRecommendation] tripId={} 이미 추천 스트림 진행 중 — 중복 요청 거부", tripId);
+            SseEmitter busy = new SseEmitter(0L);
+            try {
+                busy.send(SseEmitter.event().name("error")
+                        .data(Map.of("message", "이미 추천이 진행 중입니다. 잠시 후 다시 시도해주세요.")));
+                busy.complete();
+            } catch (Exception ignored) {}
+            return busy;
         }
 
         // 장소 좌표 조회 (DB 미존재 시 Google API 폴백)
@@ -134,7 +150,8 @@ public class GapRecommendationService {
                 tripId, gapMin, travelMin, mode, availableMin, radiusMinute, checkAt);
 
         SseEmitter emitter = new SseEmitter(90_000L);
-        recommendationService.doStreamAsync(ctx, emitter);
+        // 스트림 완료(정상/오류/타임아웃) 시 activeStreams에서 tripId 제거
+        recommendationService.doStreamAsync(ctx, emitter, () -> activeStreams.remove(tripId));
         return emitter;
     }
 
