@@ -85,7 +85,15 @@ async function handleLogin(e) {
 
 async function handleLogout() {
   try {
-    await apiFetch('/api/auth/logout', { method: 'POST', body: JSON.stringify({ refreshToken }) });
+    // apiFetch 대신 plain fetch 사용: 403 응답 시 apiFetch 내부의 handleLogout() 재호출로 인한 무한 루프 방지
+    await fetch('/api/auth/logout', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        ...(accessToken ? { Authorization: `Bearer ${accessToken}` } : {})
+      },
+      body: JSON.stringify({ refreshToken })
+    });
   } catch (_) {}
 
   Object.values(pollingTimers).forEach(clearInterval);
