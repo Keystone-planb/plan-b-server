@@ -5,8 +5,32 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Plan B Admin</title>
   <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    /* 셀 전체 보기 커서 */
+    .expandable { cursor: pointer; }
+    .expandable:hover { color: #4f46e5; }
+    /* 모달 스크롤 */
+    #text-modal-body { word-break: break-all; }
+  </style>
 </head>
 <body class="bg-gray-100 min-h-screen text-gray-800 text-sm font-sans">
+
+<!-- ═══════ 텍스트 전체 보기 모달 ═══════ -->
+<div id="text-modal"
+     class="fixed inset-0 bg-black bg-opacity-50 z-50 hidden flex items-center justify-center p-4"
+     onclick="closeTextModal()">
+  <div class="bg-white rounded-xl shadow-2xl w-full max-w-lg p-6 relative"
+       onclick="event.stopPropagation()">
+    <div class="flex items-start justify-between mb-3 gap-2">
+      <h3 id="text-modal-title" class="font-bold text-base text-gray-800 leading-snug"></h3>
+      <button onclick="closeTextModal()"
+              class="text-gray-400 hover:text-gray-600 text-xl leading-none flex-shrink-0 mt-0.5">✕</button>
+    </div>
+    <div id="text-modal-body"
+         class="text-sm text-gray-700 whitespace-pre-wrap leading-relaxed max-h-80 overflow-y-auto border border-gray-100 rounded-lg p-3 bg-gray-50">
+    </div>
+  </div>
+</div>
 
 <!-- ═══════ 로그인 ═══════ -->
 <div id="login-section" class="flex items-center justify-center min-h-screen">
@@ -102,7 +126,7 @@
                 <th class="px-4 py-3 text-left">권한</th>
                 <th class="px-4 py-3 text-left">가입방법</th>
                 <th class="px-4 py-3 text-left">상태</th>
-                <th class="px-4 py-3 text-left">무드 선호도</th>
+                <th class="px-4 py-3 text-left">여행 선호 스타일</th>
                 <th class="px-4 py-3 text-left">가입일</th>
                 <th class="px-4 py-3 text-left">액션</th>
               </tr>
@@ -222,6 +246,7 @@
             <option>SHOP</option><option>MARKET</option><option>THEME</option>
             <option>CULTURE</option><option>PARK</option>
           </select>
+          <span class="text-xs text-gray-400 ml-1">💡 주소·카테고리·리뷰 셀 클릭 시 전체 내용 확인</span>
           <button onclick="loadDbPlaces()"
                   class="bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-semibold px-3 py-1.5 rounded-lg transition ml-auto">
             새로고침
@@ -235,8 +260,8 @@
                 <th onclick="sortPlaces('id')"              class="px-3 py-3 text-left cursor-pointer select-none hover:bg-gray-100 whitespace-nowrap">ID <span id="ps-id" class="text-gray-300">⇅</span></th>
                 <th onclick="sortPlaces('name')"            class="px-3 py-3 text-left cursor-pointer select-none hover:bg-gray-100 whitespace-nowrap">장소명 <span id="ps-name" class="text-gray-300">⇅</span></th>
                 <th class="px-3 py-3 text-left whitespace-nowrap">Google Place ID</th>
-                <th class="px-3 py-3 text-left whitespace-nowrap">주소</th>
-                <th class="px-3 py-3 text-left whitespace-nowrap">카테고리</th>
+                <th class="px-3 py-3 text-left whitespace-nowrap">주소 <span class="text-indigo-300 normal-case font-normal">(클릭)</span></th>
+                <th class="px-3 py-3 text-left whitespace-nowrap">카테고리 <span class="text-indigo-300 normal-case font-normal">(클릭)</span></th>
                 <th onclick="sortPlaces('type')"            class="px-3 py-3 text-left cursor-pointer select-none hover:bg-gray-100 whitespace-nowrap">타입 <span id="ps-type" class="text-gray-300">⇅</span></th>
                 <th onclick="sortPlaces('space')"           class="px-3 py-3 text-left cursor-pointer select-none hover:bg-gray-100 whitespace-nowrap">스페이스 <span id="ps-space" class="text-gray-300">⇅</span></th>
                 <th onclick="sortPlaces('mood')"            class="px-3 py-3 text-left cursor-pointer select-none hover:bg-gray-100 whitespace-nowrap">분위기 <span id="ps-mood" class="text-gray-300">⇅</span></th>
@@ -249,7 +274,7 @@
                 <th class="px-3 py-3 text-left whitespace-nowrap">전화번호</th>
                 <th class="px-3 py-3 text-left whitespace-nowrap">웹사이트</th>
                 <th class="px-3 py-3 text-left whitespace-nowrap">영업시간</th>
-                <th class="px-3 py-3 text-left whitespace-nowrap">리뷰 요약</th>
+                <th class="px-3 py-3 text-left whitespace-nowrap">리뷰 요약 <span class="text-indigo-300 normal-case font-normal">(클릭)</span></th>
                 <th onclick="sortPlaces('lastSyncedAt')"    class="px-3 py-3 text-left cursor-pointer select-none hover:bg-gray-100 whitespace-nowrap">마지막 분석 <span id="ps-lastSyncedAt" class="text-gray-300">⇅</span></th>
                 <th onclick="sortPlaces('analysisStatus')"  class="px-3 py-3 text-left cursor-pointer select-none hover:bg-gray-100 whitespace-nowrap">상태 <span id="ps-analysisStatus" class="text-gray-300">⇅</span></th>
                 <th class="px-3 py-3 text-left whitespace-nowrap">액션</th>
@@ -285,9 +310,9 @@
       <!-- 알림 테이블 -->
       <section class="bg-white rounded-xl shadow-sm overflow-hidden">
         <div class="px-5 py-4 border-b flex items-center gap-2 flex-wrap">
-          <input id="n-search" type="text" placeholder="사용자ID / planId 검색..."
+          <input id="n-search" type="text" placeholder="이름 / 이메일 / 장소명 검색..."
                  oninput="applyNotificationFilter()"
-                 class="border border-gray-300 rounded-lg px-3 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-indigo-400 w-52" />
+                 class="border border-gray-300 rounded-lg px-3 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-indigo-400 w-56" />
           <select id="n-filter-push" onchange="applyNotificationFilter()"
                   class="border border-gray-300 rounded-lg px-3 py-1.5 text-xs focus:outline-none w-32">
             <option value="">전체 상태</option>
@@ -305,14 +330,15 @@
             <thead class="bg-gray-50 text-gray-400 text-xs uppercase sticky top-0 z-10">
               <tr>
                 <th class="px-4 py-3 text-left whitespace-nowrap">알림 ID</th>
-                <th class="px-4 py-3 text-left whitespace-nowrap">사용자 ID</th>
-                <th class="px-4 py-3 text-left whitespace-nowrap">Plan ID</th>
+                <th class="px-4 py-3 text-left whitespace-nowrap">사용자</th>
+                <th class="px-4 py-3 text-left whitespace-nowrap">여행 / 장소</th>
                 <th class="px-4 py-3 text-left whitespace-nowrap">타입</th>
                 <th class="px-4 py-3 text-left whitespace-nowrap">제목</th>
                 <th class="px-4 py-3 text-left whitespace-nowrap">강수 확률</th>
                 <th class="px-4 py-3 text-left whitespace-nowrap">푸시 상태</th>
                 <th class="px-4 py-3 text-left whitespace-nowrap">푸시 발송 시각</th>
                 <th class="px-4 py-3 text-left whitespace-nowrap">생성 시각</th>
+                <th class="px-4 py-3 text-left whitespace-nowrap">액션</th>
               </tr>
             </thead>
             <tbody id="n-tbody" class="divide-y divide-gray-100"></tbody>

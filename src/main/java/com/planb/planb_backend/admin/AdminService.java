@@ -1,6 +1,7 @@
 package com.planb.planb_backend.admin;
 
 import com.planb.planb_backend.domain.notification.entity.Notification;
+import com.planb.planb_backend.domain.notification.service.ExpoPushService;
 import com.planb.planb_backend.domain.place.entity.Place;
 import com.planb.planb_backend.domain.place.repository.PlaceRepository;
 import com.planb.planb_backend.domain.preference.repository.UserPreferenceRepository;
@@ -17,6 +18,7 @@ import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.LocalDateTime;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
@@ -36,6 +38,7 @@ public class AdminService {
     private final PlaceRepository             placeRepository;
     private final AdminNotificationRepository adminNotificationRepository;
     private final AdminEmailAuthRepository    adminEmailAuthRepository;
+    private final ExpoPushService             expoPushService;
 
     // ── 사용자 목록 ─────────────────────────────────────────────────────────
     @Transactional(readOnly = true)
@@ -148,10 +151,67 @@ public class AdminService {
     }
 
     // ── 날씨 알림 전체 목록 (알림 관제 탭) ────────────────────────────────
+    /**
+     * N+1 방지:
+     * 1) Notification 전체 1회 조회
+     * 2) userId 배치 → User 1회 IN 조회
+     * 3) planId 배치 → TripPlace FETCH JOIN (itinerary, trip) 1회 조회
+     */
     @Transactional(readOnly = true)
     public List<AdminNotificationDto> getAllNotifications() {
-        return adminNotificationRepository.findAllByOrderByCreatedAtDesc()
-                .stream().map(AdminNotificationDto::from).toList();
+        List<Notification> notifications = adminNotificationRepository.findAllByOrderByCreatedAtDesc();
+
+        // 배치 User 로드
+        List<Long> userIds = notifications.stream()
+                .map(Notification::getUserId).filter(Objects::nonNull).distinct().toList();
+        Map<Long, User> userMap = userRepository.findAllById(userIds).stream()
+                .collect(Collectors.toMap(User::getId, u -> u));
+
+        // 배치 TripPlace 로드 (itinerary → trip FETCH JOIN으로 N+1 방지)
+        List<Long> planIds = notifications.stream()
+                .map(Notification::getPlanId).filter(Objects::nonNull).distinct().toList();
+        Map<Long, TripPlace> tripPlaceMap = planIds.isEmpty()
+                ? Map.of()
+                : tripPlaceRepository.findByIdInWithTrip(planIds).stream()
+                        .collect(Collectors.toMap(TripPlace::getTripPlaceId, tp -> tp));
+
+        return notifications.stream().map(n -> {
+            User      user     = userMap.get(n.getUserId());
+            TripPlace tp       = tripPlaceMap.get(n.getPlanId());
+            String    tripTitle = null;
+            try {
+                if (tp != null) tripTitle = tp.getItinerary().getTrip().getTitle();
+            } catch (Exception ignored) {}
+            return AdminNotificationDto.from(n, user, tp, tripTitle);
+        }).toList();
+    }
+
+    // ── 날씨 알림 수동 재발송 ──────────────────────────────────────────────
+    @Transactional
+    public void resendNotification(Long notificationId) {
+        Notification n = adminNotificationRepository.findById(notificationId)
+                .orElseThrow(() -> new IllegalArgumentException("알림을 찾을 수 없습니다: " + notificationId));
+
+        User user = userRepository.findById(n.getUserId())
+                .orElseThrow(() -> new IllegalArgumentException("사용자를 찾을 수 없습니다: " + n.getUserId()));
+
+        if (user.getExpoPushToken() == null || user.getExpoPushToken().isBlank()) {
+            throw new IllegalStateException("해당 사용자의 푸시 토큰이 없습니다. (userId=" + n.getUserId() + ")");
+        }
+
+        expoPushService.sendPush(
+                user.getExpoPushToken(),
+                n.getTitle(),
+                n.getBody(),
+                Map.of("notificationId", n.getId(), "type", n.getType())
+        );
+
+        // push_sent_at 갱신 (dirty checking으로 자동 UPDATE)
+        n.setPushSentAt(LocalDateTime.now());
+
+        log.info("[Admin] 수동 재발송 완료: notificationId={}, userId={}, token={}***",
+                notificationId, n.getUserId(),
+                user.getExpoPushToken().substring(0, Math.min(10, user.getExpoPushToken().length())));
     }
 
     // ════════════════════════════════════════════════════════════════════════
@@ -297,11 +357,20 @@ public class AdminService {
     /** 사용자 무드 선호도 DTO */
     public record AdminMoodPreferenceDto(String mood, Double score) {}
 
-    /** 날씨 알림 모니터링 DTO */
+    /**
+     * 날씨 알림 모니터링 DTO
+     * userEmail/userName: 발송 대상 사용자 식별
+     * planName: TripPlace.name (알림이 발생한 일정 장소명)
+     * tripTitle: Trip.title (해당 여행 제목)
+     */
     public record AdminNotificationDto(
             Long    notificationId,
             Long    userId,
+            String  userEmail,          // 사용자 이메일
+            String  userName,           // 사용자 닉네임
             Long    planId,
+            String  planName,           // TripPlace.name (일정 장소명)
+            String  tripTitle,          // Trip.title (여행 제목)
             String  type,
             String  title,
             String  precipitationProb,  // "70%" 형식
@@ -309,11 +378,15 @@ public class AdminService {
             String  pushSentAt,
             String  createdAt
     ) {
-        static AdminNotificationDto from(Notification n) {
+        static AdminNotificationDto from(Notification n, User user, TripPlace tp, String tripTitle) {
             return new AdminNotificationDto(
                     n.getId(),
                     n.getUserId(),
+                    user != null ? user.getEmail()    : null,
+                    user != null ? user.getNickname() : null,
                     n.getPlanId(),
+                    tp   != null ? tp.getName()       : null,
+                    tripTitle,
                     n.getType(),
                     n.getTitle(),
                     n.getPrecipitationProb() != null ? n.getPrecipitationProb() + "%" : "—",

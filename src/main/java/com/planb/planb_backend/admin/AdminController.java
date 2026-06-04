@@ -7,6 +7,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
+import java.util.Map;
 
 @Tag(name = "어드민", description = "내부 관리자 전용 API — ADMIN 권한 JWT 필요")
 @RestController
@@ -78,9 +79,20 @@ public class AdminController {
 
     // ── 알림 관제 ──────────────────────────────────────────────────────────
 
-    @Operation(summary = "날씨 알림 전체 목록 조회 (최신순)")
+    @Operation(summary = "날씨 알림 전체 목록 조회 (사용자·장소·여행 정보 포함, 최신순)")
     @GetMapping("/notifications")
     public ResponseEntity<List<AdminService.AdminNotificationDto>> getAllNotifications() {
         return ResponseEntity.ok(adminService.getAllNotifications());
+    }
+
+    @Operation(
+        summary = "날씨 알림 수동 재발송",
+        description = "특정 알림을 해당 유저에게 즉시 다시 발송하고 push_sent_at을 현재 시각으로 갱신합니다."
+    )
+    @PostMapping("/notifications/{notificationId}/resend")
+    public ResponseEntity<Map<String, String>> resendNotification(
+            @PathVariable Long notificationId) {
+        adminService.resendNotification(notificationId);
+        return ResponseEntity.ok(Map.of("message", "재발송 완료"));
     }
 }

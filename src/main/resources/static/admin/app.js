@@ -18,8 +18,8 @@ let currentTripPlaces    = [];   // 정렬 기준이 바뀌어도 원본 보존
 let tripPlacesSortCol    = 'day';
 let tripPlacesSortDir    = 'asc';
 
-const tripPlaceJsonData = {};    // { tripPlaceId: { openingHours, reviewData } }
-const placeJsonData     = {};    // { googlePlaceId: { openingHours, reviewData } }
+const tripPlaceJsonData = {};    // { tripPlaceId: { openingHours, reviewData, category, memo } }
+const placeJsonData     = {};    // { googlePlaceId_safe: { openingHours, reviewData, address, category, reviewSummary } }
 const pollingTimers     = {};    // { googlePlaceId: intervalId }
 
 // 여행 장소 정렬 컬럼 목록
@@ -35,6 +35,23 @@ const PLACE_SORT_COLS = ['id','name','type','space','mood','rating','userRatings
 // ════════════════════════════════════════════════════════════════════════════
 window.addEventListener('DOMContentLoaded', () => {
   if (accessToken) { showAdmin(); switchTab('users'); loadUsers(); }
+});
+
+// ════════════════════════════════════════════════════════════════════════════
+// 텍스트 전체 보기 모달
+// ════════════════════════════════════════════════════════════════════════════
+function showTextModal(title, content) {
+  if (!content) return;
+  document.getElementById('text-modal-title').textContent = title;
+  document.getElementById('text-modal-body').textContent  = content;
+  document.getElementById('text-modal').classList.remove('hidden');
+}
+function closeTextModal() {
+  document.getElementById('text-modal').classList.add('hidden');
+}
+// ESC 키로 모달 닫기
+window.addEventListener('keydown', e => {
+  if (e.key === 'Escape') closeTextModal();
 });
 
 // ════════════════════════════════════════════════════════════════════════════
@@ -86,7 +103,6 @@ async function handleLogin(e) {
 
 async function handleLogout() {
   try {
-    // apiFetch 대신 plain fetch 사용: 403 응답 시 apiFetch 내부의 handleLogout() 재호출로 인한 무한 루프 방지
     await fetch('/api/auth/logout', {
       method: 'POST',
       headers: {
@@ -179,7 +195,7 @@ function renderUsersTable(users) {
           ? '<span class="bg-green-100 text-green-700 text-xs px-2 py-0.5 rounded-full">활성</span>'
           : '<span class="bg-gray-200 text-gray-500 text-xs px-2 py-0.5 rounded-full">탈퇴</span>'}
       </td>
-      <!-- 무드 선호도 배지 (클릭 시 로드) -->
+      <!-- 여행 선호 스타일 배지 (클릭 시 로드) -->
       <td class="px-4 py-3" id="mood-cell-${u.id}" onclick="event.stopPropagation()">
         <button onclick="loadUserMoodBadges(${u.id})"
                 class="text-xs text-indigo-400 hover:text-indigo-600 underline whitespace-nowrap">
@@ -329,13 +345,11 @@ function renderSortedTripPlaces() {
 }
 
 // ── 리뷰 요약 추출 헬퍼 ────────────────────────────────────────────────────
-// reviewData JSONB에서 요약 텍스트를 꺼냄. 없으면 null 반환.
 function extractReviewSummary(reviewDataStr) {
   if (!reviewDataStr) return null;
   try {
     const d = JSON.parse(reviewDataStr);
-    // 다양한 필드명 시도 (AI 분석 결과 구조에 따라 다를 수 있음)
-    return d.reviewSummary ?? d.summary ?? d.googleReview ?? d.naverReview ?? null;
+    return d.totalSummary ?? d.reviewSummary ?? d.summary ?? d.googleReview ?? d.naverReview ?? null;
   } catch {
     return null;
   }
@@ -353,99 +367,87 @@ function renderTripPlacesTable(places, title) {
   document.getElementById('trip-places-tbody').innerHTML = places.map(p => {
     const sid = safe(p.googlePlaceId);
 
-    // JSON 데이터는 전역 Map에 보관 (onclick에 직접 삽입하면 이스케이프 문제)
+    // JSON + 텍스트 데이터 전역 Map에 보관 (onclick 문자열에 직접 삽입하면 이스케이프 문제)
     tripPlaceJsonData[p.tripPlaceId] = {
       openingHours: p.openingHours,
-      reviewData:   p.reviewData
+      reviewData:   p.reviewData,
+      category:     p.category,
+      memo:         p.memo
     };
 
     const statusBadge = p.analysisStatus === 'COMPLETE'
       ? '<span class="bg-green-100 text-green-700 text-xs font-semibold px-2 py-0.5 rounded-full">완료</span>'
       : '<span class="bg-yellow-100 text-yellow-700 text-xs font-semibold px-2 py-0.5 rounded-full">미완료</span>';
 
-    // 리뷰 요약: JSON 파싱 → 텍스트 인라인 표시 + 전체 보기 버튼
     const reviewSummary = extractReviewSummary(p.reviewData);
 
     return `
     <tr id="tpr-${sid}" class="hover:bg-gray-50 transition">
-      <!-- 장소 ID (tripPlaceId) -->
       <td class="px-3 py-3 text-gray-500 font-mono text-xs whitespace-nowrap">${p.tripPlaceId ?? '—'}</td>
-      <!-- 일차 -->
       <td class="px-3 py-3 text-center whitespace-nowrap">
         <span class="font-bold text-indigo-500">${p.day}일차</span>
       </td>
-      <!-- 날짜 -->
       <td class="px-3 py-3 text-gray-400 text-xs whitespace-nowrap">${p.date ?? '—'}</td>
-      <!-- 방문 순서 -->
       <td class="px-3 py-3 text-center text-gray-600">${p.visitOrder}</td>
-      <!-- 장소명 -->
       <td class="px-3 py-3 font-medium max-w-[140px]">
         <div class="truncate" title="${escHtml(p.name)}">${escHtml(p.name)}</div>
       </td>
-      <!-- Google Place ID -->
       <td class="px-3 py-3 text-gray-400 text-xs max-w-[130px] truncate"
           title="${escHtml(p.googlePlaceId)}">${escHtml(p.googlePlaceId || '—')}</td>
-      <!-- 방문시간 -->
       <td class="px-3 py-3 text-gray-600 whitespace-nowrap">${p.visitTime || '—'}</td>
-      <!-- 종료시간 -->
       <td class="px-3 py-3 text-gray-600 whitespace-nowrap">${p.endTime || '—'}</td>
-      <!-- 이동수단 -->
       <td class="px-3 py-3">
         ${p.transportMode
           ? `<span class="bg-blue-100 text-blue-700 text-xs px-2 py-0.5 rounded-full">${p.transportMode}</span>`
           : '<span class="text-gray-300 text-xs">—</span>'}
       </td>
-      <!-- 이동시간차 (transitGapMinutes) — 엔티티에 없어 항상 정보 없음 -->
       <td class="px-3 py-3 text-gray-300 text-xs text-center">—</td>
-      <!-- 위도 -->
       <td class="px-3 py-3 text-xs text-gray-500 whitespace-nowrap font-mono">
         ${p.latitude != null ? p.latitude.toFixed(6) : '—'}
       </td>
-      <!-- 경도 -->
       <td class="px-3 py-3 text-xs text-gray-500 whitespace-nowrap font-mono">
         ${p.longitude != null ? p.longitude.toFixed(6) : '—'}
       </td>
-      <!-- 카테고리 -->
-      <td class="px-3 py-3 text-xs text-gray-500 max-w-[100px]">
-        <div class="truncate" title="${escHtml(p.category)}">${escHtml(p.category || '—')}</div>
+      <!-- 카테고리 (클릭 → 모달) -->
+      <td class="px-3 py-3 text-xs text-gray-500 max-w-[100px] expandable"
+          onclick="showTripPlaceText(${p.tripPlaceId}, 'category', '카테고리')">
+        <div class="truncate">${escHtml(p.category || '—')}</div>
       </td>
-      <!-- 타입 -->
       <td class="px-3 py-3">
         ${p.placeType
           ? `<span class="bg-indigo-100 text-indigo-700 text-xs px-2 py-0.5 rounded-full">${p.placeType}</span>`
           : '<span class="text-gray-300 text-xs">—</span>'}
       </td>
-      <!-- 스페이스 -->
       <td class="px-3 py-3">
         ${p.space
           ? `<span class="bg-purple-100 text-purple-700 text-xs px-2 py-0.5 rounded-full">${p.space}</span>`
           : '<span class="text-gray-300 text-xs">—</span>'}
       </td>
-      <!-- 분위기 -->
       <td class="px-3 py-3">
         ${p.mood
           ? `<span class="bg-pink-100 text-pink-700 text-xs px-2 py-0.5 rounded-full">${p.mood}</span>`
           : '<span class="text-gray-300 text-xs">—</span>'}
       </td>
-      <!-- 메모 -->
-      <td class="px-3 py-3 text-gray-500 text-xs max-w-[120px]">
-        <div class="truncate" title="${escHtml(p.memo)}">${escHtml(p.memo || '—')}</div>
+      <!-- 메모 (클릭 → 모달) -->
+      <td class="px-3 py-3 text-gray-500 text-xs max-w-[120px] ${p.memo ? 'expandable' : ''}"
+          onclick="${p.memo ? `showTripPlaceText(${p.tripPlaceId}, 'memo', '메모')` : ''}">
+        <div class="truncate">${escHtml(p.memo || '—')}</div>
       </td>
-      <!-- 출처 -->
       <td class="px-3 py-3">${sourceColor(p.source)}</td>
-      <!-- 영업시간 (JSONB) -->
       <td class="px-3 py-3">
         ${p.openingHours
           ? `<button onclick="showJsonDetail(${p.tripPlaceId}, 'openingHours', '영업시간')"
                      class="text-xs text-blue-500 hover:text-blue-700 underline whitespace-nowrap">보기</button>`
           : '<span class="text-gray-300 text-xs">—</span>'}
       </td>
-      <!-- 리뷰 요약 (reviewData 파싱) -->
+      <!-- 리뷰 요약 (클릭 → 모달) -->
       <td class="px-3 py-3 max-w-[180px]">
         ${p.reviewData ? `
           <div class="flex flex-col gap-1">
             ${reviewSummary
-              ? `<div class="text-xs text-gray-600 truncate" title="${escHtml(reviewSummary)}">${escHtml(reviewSummary)}</div>`
+              ? `<div class="text-xs text-gray-600 truncate expandable"
+                          onclick="showTripPlaceText(${p.tripPlaceId}, 'reviewSummary', '리뷰 요약')"
+                     >${escHtml(reviewSummary)}</div>`
               : ''}
             <button onclick="showJsonDetail(${p.tripPlaceId}, 'reviewData', '리뷰 전체')"
                     class="text-xs text-blue-500 hover:text-blue-700 underline whitespace-nowrap self-start">
@@ -454,17 +456,13 @@ function renderTripPlacesTable(places, title) {
           </div>
         ` : '<span class="text-gray-300 text-xs">—</span>'}
       </td>
-      <!-- 평점 -->
       <td class="px-3 py-3 whitespace-nowrap text-xs">
         ${p.rating != null ? `⭐ ${p.rating.toFixed(1)}` : '—'}
       </td>
-      <!-- 리뷰수 -->
       <td class="px-3 py-3 text-xs text-gray-500 text-center">
         ${p.userRatingsTotal != null ? p.userRatingsTotal.toLocaleString() : '—'}
       </td>
-      <!-- 분석상태 -->
       <td class="px-3 py-3" id="tpr-status-${sid}">${statusBadge}</td>
-      <!-- 액션 -->
       <td class="px-3 py-3">
         <div class="flex flex-col gap-1">
           ${p.googlePlaceId
@@ -484,14 +482,28 @@ function renderTripPlacesTable(places, title) {
   }).join('');
 }
 
-// ── JSON 데이터 팝업 (영업시간 / 리뷰 데이터) ─────────────────────────────
+// ── 여행 장소 텍스트 전체 보기 ─────────────────────────────────────────────
+function showTripPlaceText(tripPlaceId, field, label) {
+  const data = tripPlaceJsonData[tripPlaceId];
+  if (!data) return;
+
+  let text = null;
+  if (field === 'reviewSummary') {
+    text = extractReviewSummary(data.reviewData);
+  } else {
+    text = data[field];
+  }
+  if (text) showTextModal(label, text);
+}
+
+// ── JSON 데이터 팝업 (영업시간 / 리뷰 원시 데이터) ────────────────────────
 function showJsonDetail(tripPlaceId, field, label) {
   const raw = tripPlaceJsonData[tripPlaceId]?.[field];
   if (!raw) { alert(`[${label}]\n\n데이터 없음`); return; }
   try {
-    alert(`[${label}]\n\n${JSON.stringify(JSON.parse(raw), null, 2)}`);
+    showTextModal(label, JSON.stringify(JSON.parse(raw), null, 2));
   } catch {
-    alert(`[${label}]\n\n${raw}`);
+    showTextModal(label, raw);
   }
 }
 
@@ -511,16 +523,13 @@ function closeTripPlacesPanel() {
   hide('trip-places-panel');
 }
 
-// ── 무드 선호도 배지 로드 ─────────────────────────────────────────────────
+// ── 무드 선호도 배지 로드 (요구사항 1: 점수 표기 포함) ───────────────────
 const MOOD_STYLE = {
   HEALING: 'bg-green-100 text-green-700',
   ACTIVE:  'bg-orange-100 text-orange-700',
   TRENDY:  'bg-pink-100 text-pink-700',
   CLASSIC: 'bg-amber-100 text-amber-700',
   LOCAL:   'bg-teal-100 text-teal-700',
-};
-const MOOD_LABEL = {
-  HEALING: '힐링', ACTIVE: '액티브', TRENDY: '트렌디', CLASSIC: '클래식', LOCAL: '로컬'
 };
 
 async function loadUserMoodBadges(userId) {
@@ -534,11 +543,11 @@ async function loadUserMoodBadges(userId) {
       return;
     }
     cell.innerHTML = prefs.map(p => {
-      const cls   = MOOD_STYLE[p.mood]  || 'bg-gray-100 text-gray-500';
-      const label = MOOD_LABEL[p.mood]  || p.mood;
+      const cls   = MOOD_STYLE[p.mood] || 'bg-gray-100 text-gray-500';
       const score = p.score != null ? p.score.toFixed(1) : '0';
-      return `<span class="${cls} text-xs font-semibold px-2 py-0.5 rounded-full mr-1 whitespace-nowrap"
-                    title="점수: ${score}">${label} ${score}</span>`;
+      // [#무드명 (점수점)] 형식
+      return `<span class="${cls} text-xs font-semibold px-2 py-0.5 rounded-full mr-1 mb-1 inline-block whitespace-nowrap">
+        #${p.mood} (${score}점)</span>`;
     }).join('');
   } catch (_) {
     cell.innerHTML = '<span class="text-xs text-red-400">오류</span>';
@@ -563,8 +572,15 @@ function applyNotificationFilter() {
   const q    = (document.getElementById('n-search').value || '').toLowerCase();
   const push = document.getElementById('n-filter-push').value;
   const f = allNotifications.filter(n =>
-    (!q    || String(n.userId || '').includes(q) || String(n.planId || '').includes(q)) &&
-    (!push || n.pushStatus === push)
+    (!push || n.pushStatus === push) &&
+    (!q || [
+      String(n.userId  || ''),
+      String(n.planId  || ''),
+      (n.userEmail  || '').toLowerCase(),
+      (n.userName   || '').toLowerCase(),
+      (n.planName   || '').toLowerCase(),
+      (n.tripTitle  || '').toLowerCase()
+    ].some(v => v.includes(q)))
   );
   renderNotificationsTable(f);
   document.getElementById('n-count').textContent =
@@ -590,23 +606,89 @@ function renderNotificationsTable(list) {
 
     return `
     <tr class="hover:bg-gray-50 transition">
+      <!-- 알림 ID -->
       <td class="px-4 py-3 text-gray-400 font-mono text-xs whitespace-nowrap">${n.notificationId ?? '—'}</td>
-      <td class="px-4 py-3 text-gray-600 text-xs">${n.userId ?? '—'}</td>
-      <td class="px-4 py-3 text-gray-600 text-xs">${n.planId ?? '—'}</td>
-      <td class="px-4 py-3">
-        <span class="bg-sky-100 text-sky-700 text-xs px-2 py-0.5 rounded-full">${escHtml(n.type || '—')}</span>
+
+      <!-- 사용자: 닉네임 + 이메일 + ID -->
+      <td class="px-4 py-3 min-w-[140px]">
+        ${n.userName
+          ? `<div class="font-semibold text-xs text-gray-800">${escHtml(n.userName)}</div>`
+          : ''}
+        ${n.userEmail
+          ? `<div class="text-xs text-gray-500">${escHtml(n.userEmail)}</div>`
+          : ''}
+        <div class="text-xs text-gray-300">ID: ${n.userId ?? '—'}</div>
       </td>
+
+      <!-- 여행 / 장소 -->
+      <td class="px-4 py-3 min-w-[160px]">
+        ${n.tripTitle
+          ? `<div class="font-semibold text-xs text-indigo-700 truncate max-w-[180px]" title="${escHtml(n.tripTitle)}">${escHtml(n.tripTitle)}</div>`
+          : ''}
+        ${n.planName
+          ? `<div class="text-xs text-gray-600 truncate max-w-[180px]" title="${escHtml(n.planName)}">📍 ${escHtml(n.planName)}</div>`
+          : ''}
+        <div class="text-xs text-gray-300">planId: ${n.planId ?? '—'}</div>
+      </td>
+
+      <!-- 타입 -->
+      <td class="px-4 py-3">
+        <span class="bg-sky-100 text-sky-700 text-xs px-2 py-0.5 rounded-full whitespace-nowrap">${escHtml(n.type || '—')}</span>
+      </td>
+
+      <!-- 제목 -->
       <td class="px-4 py-3 text-xs text-gray-700 max-w-[160px]">
         <div class="truncate" title="${escHtml(n.title)}">${escHtml(n.title || '—')}</div>
       </td>
+
+      <!-- 강수 확률 -->
       <td class="px-4 py-3 text-center text-xs font-semibold text-blue-600 whitespace-nowrap">
         ${escHtml(n.precipitationProb || '—')}
       </td>
+
+      <!-- 푸시 상태 -->
       <td class="px-4 py-3">${pushBadge}</td>
+
+      <!-- 푸시 발송 시각 -->
       <td class="px-4 py-3 text-gray-400 text-xs whitespace-nowrap">${fmtDate(n.pushSentAt)}</td>
+
+      <!-- 생성 시각 -->
       <td class="px-4 py-3 text-gray-400 text-xs whitespace-nowrap">${fmtDate(n.createdAt)}</td>
+
+      <!-- 액션: 재알림 버튼 -->
+      <td class="px-4 py-3">
+        <button id="resend-btn-${n.notificationId}"
+                onclick="resendNotification(${n.notificationId})"
+                class="bg-violet-500 hover:bg-violet-600 disabled:opacity-40 disabled:cursor-not-allowed
+                       text-white text-xs px-3 py-1 rounded transition whitespace-nowrap">
+          재알림
+        </button>
+      </td>
     </tr>`;
   }).join('');
+}
+
+// ── 날씨 알림 수동 재발송 (요구사항 4) ────────────────────────────────────
+async function resendNotification(notificationId) {
+  if (!confirm('이 알림을 해당 사용자에게 다시 발송하시겠습니까?\n\n푸시 토큰이 없거나 앱을 삭제한 경우 발송되지 않을 수 있습니다.')) return;
+  const btn = document.getElementById(`resend-btn-${notificationId}`);
+  if (btn) { btn.disabled = true; btn.textContent = '발송 중...'; }
+  try {
+    await apiFetch(`/api/admin/notifications/${notificationId}/resend`, { method: 'POST' });
+    alert('재발송 완료되었습니다.');
+
+    // 로컬 상태 업데이트 (새로고침 없이 푸시 상태 반영)
+    const n = allNotifications.find(x => x.notificationId === notificationId);
+    if (n) {
+      n.pushStatus = '발송됨';
+      n.pushSentAt = new Date().toISOString();
+      updateNotificationStats(allNotifications);
+      applyNotificationFilter(); // 테이블 재렌더링
+    }
+  } catch (ex) {
+    alert('재발송 실패: ' + ex.message);
+    if (btn) { btn.disabled = false; btn.textContent = '재알림'; }
+  }
 }
 
 // ════════════════════════════════════════════════════════════════════════════
@@ -690,10 +772,13 @@ function renderDbPlacesTable(places) {
   document.getElementById('p-tbody').innerHTML = places.map(p => {
     const sid = safe(p.googlePlaceId);
 
-    // JSONB 데이터 전역 Map 보관
+    // JSONB + 텍스트 데이터 전역 Map 보관 (요구사항 2: 텍스트 셀 전체 보기용)
     placeJsonData[sid] = {
-      openingHours: p.openingHours,
-      reviewData:   p.reviewData
+      openingHours:  p.openingHours,
+      reviewData:    p.reviewData,
+      address:       p.address,
+      category:      p.category,
+      reviewSummary: extractReviewSummary(p.reviewData)
     };
 
     const statusBadge = p.analysisStatus === 'COMPLETE'
@@ -728,12 +813,15 @@ function renderDbPlacesTable(places) {
       <!-- Google Place ID -->
       <td class="px-3 py-3 text-gray-400 text-xs max-w-[130px] truncate"
           title="${escHtml(p.googlePlaceId)}">${escHtml(p.googlePlaceId || '—')}</td>
-      <!-- 주소 -->
-      <td class="px-3 py-3 text-gray-500 text-xs max-w-[180px] truncate"
-          title="${escHtml(p.address)}">${escHtml(p.address || '—')}</td>
-      <!-- 카테고리 -->
-      <td class="px-3 py-3 text-gray-500 text-xs max-w-[120px]">
-        <div class="truncate" title="${escHtml(p.category)}">${escHtml(p.category || '—')}</div>
+      <!-- 주소 (클릭 → 모달) — 요구사항 2 -->
+      <td class="px-3 py-3 text-gray-500 text-xs max-w-[180px] expandable"
+          onclick="showPlaceText('${escJs(sid)}', 'address', '주소')">
+        <div class="truncate">${escHtml(p.address || '—')}</div>
+      </td>
+      <!-- 카테고리 (클릭 → 모달) — 요구사항 2 -->
+      <td class="px-3 py-3 text-gray-500 text-xs max-w-[120px] expandable"
+          onclick="showPlaceText('${escJs(sid)}', 'category', '카테고리')">
+        <div class="truncate">${escHtml(p.category || '—')}</div>
       </td>
       <!-- 타입 -->
       <td class="px-3 py-3">
@@ -786,12 +874,14 @@ function renderDbPlacesTable(places) {
                      class="text-xs text-blue-500 hover:text-blue-700 underline whitespace-nowrap">보기</button>`
           : '<span class="text-gray-300 text-xs">—</span>'}
       </td>
-      <!-- 리뷰 요약 -->
+      <!-- 리뷰 요약 (클릭 → 모달) — 요구사항 2 -->
       <td class="px-3 py-3 max-w-[180px]">
         ${p.reviewData ? `
           <div class="flex flex-col gap-1">
             ${reviewSummary
-              ? `<div class="text-xs text-gray-600 truncate" title="${escHtml(reviewSummary)}">${escHtml(reviewSummary)}</div>`
+              ? `<div class="text-xs text-gray-600 truncate expandable"
+                          onclick="showPlaceText('${escJs(sid)}', 'reviewSummary', '리뷰 요약')"
+                     >${escHtml(reviewSummary)}</div>`
               : ''}
             <button onclick="showPlaceJsonDetail('${escJs(sid)}', 'reviewData', '리뷰 전체')"
                     class="text-xs text-blue-500 hover:text-blue-700 underline whitespace-nowrap self-start">
@@ -818,14 +908,20 @@ function renderDbPlacesTable(places) {
   }).join('');
 }
 
-// ── 장소 관리 탭 JSON 팝업 ─────────────────────────────────────────────────
+// ── 장소 관리: 텍스트 셀 전체 보기 (요구사항 2) ──────────────────────────
+function showPlaceText(sid, field, label) {
+  const text = placeJsonData[sid]?.[field];
+  if (text) showTextModal(label, text);
+}
+
+// ── 장소 관리: JSON 팝업 (영업시간 / 리뷰 원시 데이터) ──────────────────
 function showPlaceJsonDetail(sid, field, label) {
   const raw = placeJsonData[sid]?.[field];
-  if (!raw) { alert(`[${label}]\n\n데이터 없음`); return; }
+  if (!raw) { showTextModal(label, '데이터 없음'); return; }
   try {
-    alert(`[${label}]\n\n${JSON.stringify(JSON.parse(raw), null, 2)}`);
+    showTextModal(label, JSON.stringify(JSON.parse(raw), null, 2));
   } catch {
-    alert(`[${label}]\n\n${raw}`);
+    showTextModal(label, raw);
   }
 }
 
@@ -897,7 +993,7 @@ async function apiFetch(url, opts = {}) {
   }
   const t = await res.text();
   if (!t) return null;
-  try { return JSON.parse(t); } catch { return t; }  // 순수 문자열 응답(재분석 등) 안전 처리
+  try { return JSON.parse(t); } catch { return t; }
 }
 
 // ════════════════════════════════════════════════════════════════════════════

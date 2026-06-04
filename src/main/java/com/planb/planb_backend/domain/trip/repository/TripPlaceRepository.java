@@ -68,4 +68,16 @@ public interface TripPlaceRepository extends JpaRepository<TripPlace, Long> {
            "WHERE tp.itinerary.trip.tripId = :tripId " +
            "ORDER BY tp.itinerary.date ASC, tp.visitTime ASC NULLS LAST")
     List<TripPlace> findByTripIdOrderByDateAndVisitOrder(@Param("tripId") Long tripId);
+
+    /**
+     * 어드민 알림 관제: ID 목록으로 TripPlace 배치 조회 (N+1 방지용 FETCH JOIN)
+     * Notification.planId → TripPlace → Itinerary → Trip 까지 한 번에 로드
+     */
+    @Query("""
+        SELECT tp FROM TripPlace tp
+        LEFT JOIN FETCH tp.itinerary it
+        LEFT JOIN FETCH it.trip
+        WHERE tp.tripPlaceId IN :ids
+        """)
+    List<TripPlace> findByIdInWithTrip(@Param("ids") List<Long> ids);
 }
