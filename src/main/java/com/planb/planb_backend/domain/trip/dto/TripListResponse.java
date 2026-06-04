@@ -14,15 +14,24 @@ public class TripListResponse {
     private String title;
     private LocalDate startDate;
     private LocalDate endDate;
-    private String status; // UPCOMING / ONGOING / PAST
+    private String status;         // UPCOMING / ONGOING / PAST
+    private int itineraryCount;    // 전체 일차 수
+    private int placeCount;        // 전체 장소 수
 
     public static TripListResponse from(Trip trip) {
+        int itineraryCount = trip.getItineraries().size();
+        int placeCount = trip.getItineraries().stream()
+                .mapToInt(it -> it.getPlaces().size())
+                .sum();
+
         return TripListResponse.builder()
                 .tripId(trip.getTripId())
                 .title(trip.getTitle())
                 .startDate(trip.getStartDate())
                 .endDate(trip.getEndDate())
                 .status(computeStatus(trip.getStartDate(), trip.getEndDate()))
+                .itineraryCount(itineraryCount)
+                .placeCount(placeCount)
                 .build();
     }
 

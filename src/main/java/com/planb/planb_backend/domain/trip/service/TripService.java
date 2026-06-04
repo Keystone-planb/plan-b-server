@@ -78,7 +78,7 @@ public class TripService {
         User user = findUser(email);
         LocalDate today = LocalDate.now();
 
-        return tripRepository.findByUserOrderByCreatedAtDesc(user)
+        return tripRepository.findByUserWithItineraries(user)
                 .stream()
                 .filter(trip -> switch (status.toUpperCase()) {
                     case "UPCOMING" -> today.isBefore(trip.getStartDate());
