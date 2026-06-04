@@ -167,12 +167,12 @@ public class AdminService {
         Map<Long, User> userMap = userRepository.findAllById(userIds).stream()
                 .collect(Collectors.toMap(User::getId, u -> u));
 
-        // 배치 TripPlace 로드 (itinerary → trip FETCH JOIN으로 N+1 방지)
+        // 배치 TripPlace 로드 (@Transactional 세션 내에서 lazy 로딩 허용)
         List<Long> planIds = notifications.stream()
                 .map(Notification::getPlanId).filter(Objects::nonNull).distinct().toList();
         Map<Long, TripPlace> tripPlaceMap = planIds.isEmpty()
                 ? Map.of()
-                : tripPlaceRepository.findByIdInWithTrip(planIds).stream()
+                : tripPlaceRepository.findAllById(planIds).stream()
                         .collect(Collectors.toMap(TripPlace::getTripPlaceId, tp -> tp));
 
         return notifications.stream().map(n -> {
