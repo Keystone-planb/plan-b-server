@@ -76,7 +76,7 @@ async function handleLogin(e) {
     }).then(async res => {
       if (!res.ok) {
         let msg = `로그인 실패 (${res.status})`;
-        try { const d = await res.json(); msg = d.message || msg; } catch (_) {}
+        try { const d = await res.json(); msg = d.error || d.message || msg; } catch (_) {}
         throw new Error(msg);
       }
       return res.json();
@@ -975,7 +975,7 @@ async function pollAnalysisStatus(googlePlaceId, prefix) {
 // ════════════════════════════════════════════════════════════════════════════
 // 공통 Fetch
 // ════════════════════════════════════════════════════════════════════════════
-async function apiFetch(url, opts = {}) {
+async function apiFetch(url, opts = {}, _retry = false) {
   const res = await fetch(url, {
     ...opts,
     headers: {
@@ -985,6 +985,12 @@ async function apiFetch(url, opts = {}) {
     }
   });
 
+  // 401: 토큰 만료 → refresh 시도 후 1회 재시도
+  if (res.status === 401 && !_retry && refreshToken) {
+    const refreshed = await tryRefreshToken();
+    if (refreshed) return apiFetch(url, opts, true);  // 새 토큰으로 재시도
+    handleLogout(); throw new Error('세션이 만료되었습니다. 다시 로그인해 주세요.');
+  }
   if (res.status === 401) { handleLogout(); throw new Error('세션이 만료되었습니다. 다시 로그인해 주세요.'); }
   if (res.status === 403) { handleLogout(); throw new Error('관리자 권한이 없습니다.'); }
   if (!res.ok) {
@@ -994,6 +1000,24 @@ async function apiFetch(url, opts = {}) {
   const t = await res.text();
   if (!t) return null;
   try { return JSON.parse(t); } catch { return t; }
+}
+
+// access token 자동 갱신 — 성공 시 true, 실패 시 false
+async function tryRefreshToken() {
+  try {
+    const res = await fetch('/api/auth/refresh', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ refreshToken })
+    });
+    if (!res.ok) return false;
+    const data = await res.json();
+    accessToken = data.access_token;
+    localStorage.setItem('admin_token', accessToken);
+    return true;
+  } catch (_) {
+    return false;
+  }
 }
 
 // ════════════════════════════════════════════════════════════════════════════
