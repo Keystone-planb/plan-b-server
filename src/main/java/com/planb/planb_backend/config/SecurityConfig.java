@@ -121,7 +121,9 @@ public class SecurityConfig {
             // OAuth2 시작 시 redirect_uri 쿠키 저장 필터
             // Spring의 OAuth2AuthorizationRequestRedirectFilter보다 반드시 먼저 실행되어야 쿠키가 저장됨
             .addFilterBefore(new OAuth2RedirectUriFilter(), OAuth2AuthorizationRequestRedirectFilter.class)
-            .addFilterBefore(new JwtFilter(jwtProvider), UsernamePasswordAuthenticationFilter.class);
+            .addFilterBefore(new JwtFilter(jwtProvider), UsernamePasswordAuthenticationFilter.class)
+            // 로그인 Rate Limiting: 같은 IP에서 1분에 10회 초과 시 429 반환
+            .addFilterBefore(new LoginRateLimitFilter(), UsernamePasswordAuthenticationFilter.class);
 
         return http.build();
     }
