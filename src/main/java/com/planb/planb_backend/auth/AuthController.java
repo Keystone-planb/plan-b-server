@@ -4,6 +4,7 @@ import com.planb.planb_backend.domain.user.dto.AuthResponse;
 import com.planb.planb_backend.domain.user.dto.LoginRequest;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
@@ -32,10 +33,15 @@ public class AuthController {
      * Body: { "refreshToken": "..." }
      */
     @PostMapping("/refresh")
-    public ResponseEntity<AuthResponse> refresh(@RequestBody Map<String, String> body) {
-        String refreshToken = body.get("refreshToken");
-        AuthResponse response = authService.refreshToken(refreshToken);
-        return ResponseEntity.ok(response);
+    public ResponseEntity<?> refresh(@RequestBody Map<String, String> body) {
+        try {
+            AuthResponse response = authService.refreshToken(body.get("refreshToken"));
+            return ResponseEntity.ok(response);
+        } catch (IllegalArgumentException e) {
+            // 토큰 만료·무효 → 401 반환 (프론트 인터셉터가 로그아웃 처리)
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
+                    .body(Map.of("error", e.getMessage()));
+        }
     }
 
     /**
