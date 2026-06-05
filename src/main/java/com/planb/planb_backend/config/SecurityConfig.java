@@ -54,6 +54,18 @@ public class SecurityConfig {
             .sessionManagement(session ->
                 session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
 
+            .headers(headers -> headers
+                // X-Frame-Options: SAMEORIGIN — 클릭재킹 방어 (DENY 대신 SAMEORIGIN: WebView 호환)
+                .frameOptions(frameOptions -> frameOptions.sameOrigin())
+                // X-Content-Type-Options: nosniff — MIME 스니핑 방어 (Spring Security 기본값 명시)
+                .contentTypeOptions(contentTypeOptions -> {})
+                // Strict-Transport-Security — HTTPS 강제 (1년, 서브도메인 포함)
+                .httpStrictTransportSecurity(hsts -> hsts
+                    .includeSubDomains(true)
+                    .maxAgeInSeconds(31_536_000)
+                )
+            )
+
             .exceptionHandling(ex -> ex
                 .authenticationEntryPoint(restAuthenticationEntryPoint)
                 .accessDeniedHandler(restAccessDeniedHandler)

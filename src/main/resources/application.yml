@@ -122,6 +122,13 @@ google:
 weather:
   api-key: ${WEATHER_API_KEY:}
 
+logging:
+  level:
+    # 403 AuthorizationDeniedException이 Tomcat 컨테이너 로거에서 ERROR로 찍히는 현상 억제
+    # RestAccessDeniedHandler가 WARN으로 기록하므로 운영 모니터링에 지장 없음
+    org.apache.catalina: WARN
+    org.springframework.security: WARN
+
 #ECS 헬스체크 설정
 management:
   endpoints:
