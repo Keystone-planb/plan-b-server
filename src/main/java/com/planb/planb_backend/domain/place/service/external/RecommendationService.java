@@ -75,7 +75,7 @@ public class RecommendationService {
 
     private static final int FUNNEL_TOP_N        = 7;  // 1차 퍼널 선발 인원
     private static final int FINAL_TOP_N         = 5;  // 최종 반환 인원
-    private static final int MIN_REVIEW_COUNT    = 10; // Hard Filter: 최소 리뷰 수
+    private static final int MIN_REVIEW_COUNT    = 1;  // Hard Filter: 리뷰 0개(데이터 없음)만 제외
     private static final long ANALYSIS_TIMEOUT_SEC = 25; // 병렬 분석 전체 타임아웃 (초) — core=7 병렬 실행 기준 25초면 충분
     private static final int CACHE_VALID_DAYS    = 30; // 분석 캐시 유효 기간 (일) — 장소 데이터는 한 달 이내 크게 안 바뀜
 
