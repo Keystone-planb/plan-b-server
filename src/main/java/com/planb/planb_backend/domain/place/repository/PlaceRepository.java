@@ -11,4 +11,7 @@ public interface PlaceRepository extends JpaRepository<Place, Long> {
     Optional<Place> findByGooglePlaceId(String googlePlaceId);
 
     List<Place> findAllByGooglePlaceIdIn(List<String> googlePlaceIds);
+
+    /** 어드민 통계: AI 분석 완료(type·space·mood 모두 존재) 장소 수 */
+    long countByTypeIsNotNullAndSpaceIsNotNullAndMoodIsNotNull();
 }

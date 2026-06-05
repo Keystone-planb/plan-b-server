@@ -17,6 +17,14 @@ public class AdminController {
 
     private final AdminService adminService;
 
+    // ── 대시보드 통계 ─────────────────────────────────────────────────────────
+
+    @Operation(summary = "대시보드 요약 통계 조회")
+    @GetMapping("/stats")
+    public ResponseEntity<AdminService.AdminStatsDto> getStats() {
+        return ResponseEntity.ok(adminService.getStats());
+    }
+
     // ── 사용자 관리 ─────────────────────────────────────────────────────────
 
     @Operation(summary = "전체 사용자 목록 조회")

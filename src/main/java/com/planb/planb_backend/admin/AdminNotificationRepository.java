@@ -26,4 +26,7 @@ public interface AdminNotificationRepository extends JpaRepository<Notification,
 
     /** 어드민 알림 관제: 최신순 전체 조회 */
     List<Notification> findAllByOrderByCreatedAtDesc();
+
+    /** 어드민 통계: 미발송(pushSentAt = null) 알림 수 */
+    long countByPushSentAtIsNull();
 }

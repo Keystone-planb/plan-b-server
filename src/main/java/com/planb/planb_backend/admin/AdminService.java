@@ -186,6 +186,21 @@ public class AdminService {
         }).toList();
     }
 
+    // ── 대시보드 요약 통계 ─────────────────────────────────────────────────
+    @Transactional(readOnly = true)
+    public AdminStatsDto getStats() {
+        long totalUsers         = userRepository.count();
+        long totalTrips         = tripRepository.count();
+        long totalPlaces        = placeRepository.count();
+        long analyzedPlaces     = placeRepository.countByTypeIsNotNullAndSpaceIsNotNullAndMoodIsNotNull();
+        long totalNotifications = adminNotificationRepository.count();
+        long unsentNotifications= adminNotificationRepository.countByPushSentAtIsNull();
+        return new AdminStatsDto(
+                totalUsers, totalTrips,
+                totalPlaces, analyzedPlaces,
+                totalNotifications, unsentNotifications);
+    }
+
     // ── 날씨 알림 수동 재발송 ──────────────────────────────────────────────
     @Transactional
     public void resendNotification(Long notificationId) {
@@ -356,6 +371,16 @@ public class AdminService {
 
     /** 사용자 무드 선호도 DTO */
     public record AdminMoodPreferenceDto(String mood, Double score) {}
+
+    /** 대시보드 요약 통계 DTO */
+    public record AdminStatsDto(
+            long totalUsers,
+            long totalTrips,
+            long totalPlaces,
+            long analyzedPlaces,
+            long totalNotifications,
+            long unsentNotifications
+    ) {}
 
     /**
      * 날씨 알림 모니터링 DTO

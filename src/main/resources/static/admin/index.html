@@ -77,6 +77,44 @@
     </div>
   </header>
 
+  <!-- 대시보드 요약 통계 -->
+  <div class="bg-indigo-50 border-b border-indigo-100">
+    <div class="max-w-screen-2xl mx-auto px-6 py-3 flex flex-wrap gap-3" id="stats-bar">
+      <div class="stats-card flex items-center gap-2 bg-white rounded-lg px-4 py-2 shadow-sm border border-indigo-100 min-w-[130px]">
+        <span class="text-xl">👤</span>
+        <div>
+          <div class="text-xs text-gray-400">전체 사용자</div>
+          <div id="stat-users" class="text-base font-bold text-gray-800">—</div>
+        </div>
+      </div>
+      <div class="stats-card flex items-center gap-2 bg-white rounded-lg px-4 py-2 shadow-sm border border-indigo-100 min-w-[130px]">
+        <span class="text-xl">✈️</span>
+        <div>
+          <div class="text-xs text-gray-400">전체 여행</div>
+          <div id="stat-trips" class="text-base font-bold text-gray-800">—</div>
+        </div>
+      </div>
+      <div class="stats-card flex items-center gap-2 bg-white rounded-lg px-4 py-2 shadow-sm border border-indigo-100 min-w-[160px]">
+        <span class="text-xl">📍</span>
+        <div>
+          <div class="text-xs text-gray-400">장소 (분석완료 / 전체)</div>
+          <div id="stat-places" class="text-base font-bold text-gray-800">—</div>
+        </div>
+      </div>
+      <div class="stats-card flex items-center gap-2 bg-white rounded-lg px-4 py-2 shadow-sm border border-indigo-100 min-w-[160px]">
+        <span class="text-xl">🔔</span>
+        <div>
+          <div class="text-xs text-gray-400">알림 (미발송 / 전체)</div>
+          <div id="stat-notifications" class="text-base font-bold text-gray-800">—</div>
+        </div>
+      </div>
+      <button onclick="loadStats()"
+              class="ml-auto text-xs text-indigo-400 hover:text-indigo-600 self-center transition">
+        새로고침
+      </button>
+    </div>
+  </div>
+
   <!-- 탭 메뉴 -->
   <div class="bg-white border-b">
     <div class="max-w-screen-2xl mx-auto px-6 flex gap-0">

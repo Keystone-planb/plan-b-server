@@ -131,6 +131,19 @@ function showAdmin() {
   document.getElementById('login-section').classList.add('hidden');
   document.getElementById('admin-section').classList.remove('hidden');
   document.getElementById('hdr-nickname').textContent = localStorage.getItem('admin_nick') || '';
+  loadStats();
+}
+
+async function loadStats() {
+  try {
+    const s = await apiFetch('/api/admin/stats');
+    document.getElementById('stat-users').textContent         = s.totalUsers.toLocaleString() + '명';
+    document.getElementById('stat-trips').textContent         = s.totalTrips.toLocaleString() + '개';
+    document.getElementById('stat-places').textContent        = s.analyzedPlaces.toLocaleString() + ' / ' + s.totalPlaces.toLocaleString();
+    document.getElementById('stat-notifications').textContent = s.unsentNotifications.toLocaleString() + ' / ' + s.totalNotifications.toLocaleString();
+  } catch (_) {
+    // 통계 로드 실패 시 기존 기능에 영향 없이 조용히 무시
+  }
 }
 
 // ════════════════════════════════════════════════════════════════════════════
