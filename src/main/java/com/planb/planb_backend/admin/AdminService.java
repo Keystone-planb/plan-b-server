@@ -1,6 +1,7 @@
 package com.planb.planb_backend.admin;
 
 import com.planb.planb_backend.domain.notification.entity.Notification;
+import com.planb.planb_backend.domain.notification.scheduler.WeatherScheduler;
 import com.planb.planb_backend.domain.notification.service.ExpoPushService;
 import com.planb.planb_backend.domain.place.entity.Place;
 import com.planb.planb_backend.domain.place.repository.PlaceRepository;
@@ -39,6 +40,7 @@ public class AdminService {
     private final AdminNotificationRepository adminNotificationRepository;
     private final AdminEmailAuthRepository    adminEmailAuthRepository;
     private final ExpoPushService             expoPushService;
+    private final WeatherScheduler            weatherScheduler;
 
     // ── 사용자 목록 ─────────────────────────────────────────────────────────
     @Transactional(readOnly = true)
@@ -184,6 +186,13 @@ public class AdminService {
             } catch (Exception ignored) {}
             return AdminNotificationDto.from(n, user, tp, tripTitle);
         }).toList();
+    }
+
+    // ── 날씨 스케줄러 수동 실행 ────────────────────────────────────────────
+    public void triggerWeatherScheduler() {
+        log.info("[Admin] 날씨 스케줄러 수동 실행 요청");
+        weatherScheduler.checkWeatherAndNotify();
+        log.info("[Admin] 날씨 스케줄러 수동 실행 완료");
     }
 
     // ── 대시보드 요약 통계 ─────────────────────────────────────────────────

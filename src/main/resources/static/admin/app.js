@@ -134,6 +134,27 @@ function showAdmin() {
   loadStats();
 }
 
+async function triggerWeatherScheduler() {
+  const btn = document.getElementById('weather-btn');
+  if (!btn || btn.disabled) return;
+
+  if (!confirm('날씨 스케줄러를 지금 바로 실행할까요?\n24시간 이내 일정을 대상으로 날씨 알림이 즉시 발송됩니다.')) return;
+
+  btn.disabled = true;
+  btn.textContent = '⏳ 실행 중...';
+
+  try {
+    await apiFetch('/api/admin/scheduler/weather', { method: 'POST' });
+    btn.textContent = '✅ 실행 완료';
+    loadStats();  // 알림 수 갱신
+    setTimeout(() => { btn.textContent = '🌧 날씨 스케줄러 실행'; btn.disabled = false; }, 3000);
+  } catch (ex) {
+    btn.textContent = '❌ 실행 실패';
+    alert('스케줄러 실행 실패: ' + ex.message);
+    setTimeout(() => { btn.textContent = '🌧 날씨 스케줄러 실행'; btn.disabled = false; }, 3000);
+  }
+}
+
 async function loadStats() {
   try {
     const s = await apiFetch('/api/admin/stats');

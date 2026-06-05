@@ -17,6 +17,18 @@ public class AdminController {
 
     private final AdminService adminService;
 
+    // ── 스케줄러 수동 실행 ────────────────────────────────────────────────────
+
+    @Operation(
+        summary = "날씨 스케줄러 수동 실행",
+        description = "24시간 이내 일정을 조회하여 날씨 알림을 즉시 발송합니다. 완료까지 수 초~수십 초 소요될 수 있습니다."
+    )
+    @PostMapping("/scheduler/weather")
+    public ResponseEntity<Map<String, String>> triggerWeatherScheduler() {
+        adminService.triggerWeatherScheduler();
+        return ResponseEntity.ok(Map.of("message", "날씨 스케줄러 실행 완료"));
+    }
+
     // ── 대시보드 통계 ─────────────────────────────────────────────────────────
 
     @Operation(summary = "대시보드 요약 통계 조회")

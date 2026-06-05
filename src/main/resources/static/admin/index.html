@@ -108,10 +108,16 @@
           <div id="stat-notifications" class="text-base font-bold text-gray-800">—</div>
         </div>
       </div>
-      <button onclick="loadStats()"
-              class="ml-auto text-xs text-indigo-400 hover:text-indigo-600 self-center transition">
-        새로고침
-      </button>
+      <div class="ml-auto flex items-center gap-2 self-center">
+        <button id="weather-btn" onclick="triggerWeatherScheduler()"
+                class="text-xs bg-blue-500 hover:bg-blue-600 text-white font-semibold px-3 py-1.5 rounded-lg transition">
+          🌧 날씨 스케줄러 실행
+        </button>
+        <button onclick="loadStats()"
+                class="text-xs text-indigo-400 hover:text-indigo-600 transition">
+          새로고침
+        </button>
+      </div>
     </div>
   </div>
 
