@@ -132,6 +132,35 @@ function showAdmin() {
   document.getElementById('admin-section').classList.remove('hidden');
   document.getElementById('hdr-nickname').textContent = localStorage.getItem('admin_nick') || '';
   loadStats();
+  loadServerStatus();
+}
+
+// 서버 상태 확인 — /actuator/health (인증 불필요, 60초마다 자동 갱신)
+let serverStatusTimer = null;
+async function loadServerStatus() {
+  const dot  = document.getElementById('server-status-dot');
+  const text = document.getElementById('server-status-text');
+  try {
+    const res = await fetch('/actuator/health');
+    const data = await res.json().catch(() => ({}));
+    if (res.ok && data.status === 'UP') {
+      dot.className  = 'w-3 h-3 rounded-full bg-green-400 flex-shrink-0';
+      text.textContent = '정상';
+      text.className = 'text-base font-bold text-green-600';
+    } else {
+      dot.className  = 'w-3 h-3 rounded-full bg-red-500 flex-shrink-0';
+      text.textContent = '이상 감지';
+      text.className = 'text-base font-bold text-red-600';
+    }
+  } catch (_) {
+    dot.className  = 'w-3 h-3 rounded-full bg-red-500 flex-shrink-0';
+    text.textContent = '응답 없음';
+    text.className = 'text-base font-bold text-red-600';
+  }
+
+  // 기존 타이머 초기화 후 60초마다 재확인
+  clearTimeout(serverStatusTimer);
+  serverStatusTimer = setTimeout(loadServerStatus, 60_000);
 }
 
 async function triggerWeatherScheduler() {
