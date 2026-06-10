@@ -6,6 +6,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.web.reactive.function.client.WebClient;
 import org.springframework.web.util.HtmlUtils;
 
+import java.time.Duration;
 import java.util.*;
 import java.util.stream.Collectors;
 
@@ -42,7 +43,7 @@ public class NaverApiService {
                     .header("Accept", "application/json")
                     .retrieve()
                     .bodyToMono(Map.class)
-                    .block();
+                    .block(Duration.ofSeconds(10)); // 10초 초과 시 IllegalStateException → catch(Exception)으로 빈 리스트 반환
 
             if (response == null || !response.containsKey("items")) {
                 log.error(">>>> [Naver API Error] 응답 형식이 올바르지 않거나 items가 없음");

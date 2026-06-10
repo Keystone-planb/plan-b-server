@@ -16,9 +16,10 @@ spring:
     username: ${DB_USERNAME}
     password: ${DB_PASSWORD}
     hikari:
-      # 수파베이스 Nano 티어(제한 15개) 및 인스턴스 확장을 고려하여 3~5 사이 유지
-      maximum-pool-size: 5
-      minimum-idle: 2
+      # Supabase Free 티어: PgBouncer transaction 모드로 실제 60개 허용 (코드 주석 오류 수정)
+      # analysisExecutor max=5 + Tomcat 동시 요청 고려하여 10으로 증가
+      maximum-pool-size: 10
+      minimum-idle: 3
       connection-timeout: 30000
       validation-timeout: 5000     # 커넥션 유효성 검사 타임아웃 5초
       idle-timeout: 600000
@@ -26,6 +27,7 @@ spring:
       # 커넥션 유효성 검사: checkout 전 ping으로 ABORTED/죽은 커넥션 조기 감지
       connection-test-query: SELECT 1
       keepalive-time: 30000        # 30초마다 idle 커넥션 ping → 죽은 커넥션 pool에서 제거
+      leak-detection-threshold: 2000  # 2초 이상 커넥션 점유 시 CloudWatch 경고 로그 출력
 
   data:
     redis:

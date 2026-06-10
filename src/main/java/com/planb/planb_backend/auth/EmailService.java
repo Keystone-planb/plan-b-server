@@ -35,8 +35,11 @@ public class EmailService {
     /**
      * 6자리 난수 생성 → HTML 메일 발송 → DB 저장 (만료 3분)
      * 메일 발송 성공 후 DB 저장 (발송 실패 시 DB 저장 방지)
+     *
+     * @Transactional 제거: SMTP 발송(외부 I/O, 최대 5초) 동안 DB 커넥션을 점유하는
+     * 안티패턴 제거. emailAuthRepository.save()는 Spring Data JPA SimpleJpaRepository가
+     * 자체 @Transactional을 보유하므로 별도 선언 없이도 정상 커밋됨.
      */
-    @Transactional
     public void sendCode(String email) {
         String code = String.format("%06d", new Random().nextInt(1_000_000));
 

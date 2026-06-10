@@ -11,10 +11,10 @@ import java.util.concurrent.ThreadPoolExecutor;
 
 /**
  * 장소 병렬 분석용 전용 ThreadPool
- * - corePoolSize 7: FUNNEL_TOP_N(7)과 동일 — 7개 분석 task 전부 1배치로 동시 실행
- *   → 기존 core=4 시 4+3 배치 구조(순차 2배치)에서 1배치로 개선, 분석 시간 약 50% 단축
- *   → 분석 스레드가 외부 API(Naver/Insta/OpenAI) 호출 중에는 DB 커넥션을 점유하지 않으므로
- *      HikariCP max-pool-size(5) 초과 위험 없음
+ * - corePoolSize 3: HikariCP max-pool-size(10) 대비 안전한 동시 분석 수
+ *   → 타임아웃 없는 OpenAI/Naver 호출로 스레드가 장시간 점유되던 문제 완화
+ *   → core=7 → 3으로 축소: 분석 속도보다 서버 안정성 우선
+ *   → max=5: HikariCP 커넥션(10개) 내에서 일반 요청과 공존 가능
  * - 작업 종료 대기: graceful shutdown 보장
  */
 @EnableAsync
@@ -25,8 +25,8 @@ public class AsyncConfig {
     @Bean(name = "analysisExecutor")
     public Executor analysisExecutor() {
         ThreadPoolTaskExecutor executor = new ThreadPoolTaskExecutor();
-        executor.setCorePoolSize(7);
-        executor.setMaxPoolSize(14);
+        executor.setCorePoolSize(3);
+        executor.setMaxPoolSize(5);
         executor.setQueueCapacity(30);
         executor.setThreadNamePrefix("place-analysis-");
         executor.setKeepAliveSeconds(60);
