@@ -18,7 +18,6 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
-import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDate;
 import java.time.LocalDateTime;
@@ -59,7 +58,8 @@ public class WeatherScheduler {
 
     private final ObjectMapper objectMapper = new ObjectMapper();
 
-    @Transactional
+    // @Transactional 제거: findForScheduler JOIN FETCH로 itinerary·trip·user 선로딩
+    // → 외부 API(날씨·Google·ExpoPush) 호출 중 DB 커넥션 장시간 점유 문제 해소
     @Scheduled(fixedRate = 6 * 60 * 60 * 1000L)
     public void checkWeatherAndNotify() {
         ZoneId kst = ZoneId.of("Asia/Seoul");

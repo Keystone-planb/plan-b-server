@@ -44,11 +44,17 @@ public interface TripPlaceRepository extends JpaRepository<TripPlace, Long> {
      * 날씨 스케줄러용 — 오늘/내일 일정 전체 조회
      * (WeatherScheduler에서 24시간 이내 일정 필터링에 사용)
      * trip.endDate >= today 조건으로 이미 종료된 여행의 일정은 제외
+     *
+     * JOIN FETCH: itinerary → trip → user 를 한 번의 쿼리로 로딩
+     * WeatherScheduler의 @Transactional 없이도 tp.getItinerary().getTrip().getUser() 접근 가능
      */
     @Query("SELECT tp FROM TripPlace tp " +
-           "WHERE (tp.itinerary.date = :today OR tp.itinerary.date = :tomorrow) " +
-           "AND tp.itinerary.trip.endDate >= :today " +
-           "ORDER BY tp.itinerary.date ASC, tp.visitTime ASC")
+           "JOIN FETCH tp.itinerary i " +
+           "JOIN FETCH i.trip t " +
+           "JOIN FETCH t.user u " +
+           "WHERE (i.date = :today OR i.date = :tomorrow) " +
+           "AND t.endDate >= :today " +
+           "ORDER BY i.date ASC, tp.visitTime ASC")
     List<TripPlace> findForScheduler(@Param("today") LocalDate today, @Param("tomorrow") LocalDate tomorrow);
 
     /**
