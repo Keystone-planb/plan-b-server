@@ -5,6 +5,7 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.web.reactive.function.client.WebClient;
 
+import java.time.Duration;
 import java.util.*;
 import java.util.stream.Collectors;
 
@@ -35,7 +36,7 @@ public class GooglePlaceApiService {
                             .build())
                     .retrieve()
                     .bodyToMono(Map.class)
-                    .block();
+                    .block(Duration.ofSeconds(10));
 
             if (response == null || !response.containsKey("result")) {
                 return Collections.emptyMap();
@@ -65,7 +66,7 @@ public class GooglePlaceApiService {
                             .build())
                     .retrieve()
                     .bodyToMono(Map.class)
-                    .block();
+                    .block(Duration.ofSeconds(10));
 
             if (response == null || !response.containsKey("result")) {
                 return Collections.emptyMap();
@@ -100,7 +101,7 @@ public class GooglePlaceApiService {
                     })
                     .retrieve()
                     .bodyToMono(Map.class)
-                    .block();
+                    .block(Duration.ofSeconds(10));
 
             if (response == null || !response.containsKey("results")) {
                 log.warn("Google Nearby Search 결과가 없습니다.");

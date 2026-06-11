@@ -145,3 +145,5 @@ management:
   health:
     redis:
       enabled: false # Redis 연결 지연으로 인한 ALB 배포 실패 방지
+    db:
+      enabled: false # DB 커넥션 풀 고갈 시 헬스체크가 커넥션을 추가 소모 → ALB 오판단 방지
