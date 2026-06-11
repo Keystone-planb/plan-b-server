@@ -17,8 +17,8 @@ import java.util.Arrays;
  * - 동일한 Redis 서버를 바라보되 빈 충돌 없이 독립적으로 동작
  *
  * [프로필 분기]
- *  dev / local → Single Server (t4g.micro 단일 노드, TLS 활성화)
- *  prod        → Cluster Server (ElastiCache Serverless)
+ * dev / local → Single Server (t4g.micro 단일 노드, TLS 활성화)
+ * prod        → Cluster Server (ElastiCache Serverless)
  */
 @Slf4j
 @Configuration
@@ -66,7 +66,8 @@ public class RedissonConfig {
      */
     private RedissonClient createSingleServerClient(Config config, String scheme) {
         String address = scheme + "://" + host + ":" + port;
-        log.info("[RedissonConfig] Single Server 모드 — address={}", address);
+        log.info("🚀 [V2 확인용] Single Server 모드 — address={}", address);
+
         try {
             config.useSingleServer()
                     .setAddress(address);
@@ -74,7 +75,7 @@ public class RedissonConfig {
         } catch (Exception e) {
             throw new IllegalStateException(
                     "[RedissonConfig] Single Server 클라이언트 생성 실패 — address=" + address +
-                    " / 원인: " + e.getMessage(), e);
+                            " / 원인: " + e.getMessage(), e);
         }
     }
 
@@ -87,7 +88,7 @@ public class RedissonConfig {
         if (clusterNodes == null || clusterNodes.isBlank()) {
             throw new IllegalStateException(
                     "[RedissonConfig] 운영 환경에서 spring.data.redis.cluster.nodes 가 비어 있습니다. " +
-                    "환경변수 SPRING_DATA_REDIS_HOST 를 확인하세요.");
+                            "환경변수 SPRING_DATA_REDIS_HOST 를 확인하세요.");
         }
 
         String[] addresses = Arrays.stream(clusterNodes.split(","))
@@ -102,12 +103,12 @@ public class RedissonConfig {
                 })
                 .toArray(String[]::new);
 
-        log.info("[RedissonConfig] Cluster Server 모드 — nodes={}", Arrays.toString(addresses));
+        log.info("🚨 [V2 확인용] Cluster Server 모드 — nodes={}", Arrays.toString(addresses));
 
         if (addresses.length == 0) {
             throw new IllegalStateException(
                     "[RedissonConfig] 파싱된 클러스터 노드 주소가 없습니다. " +
-                    "cluster.nodes 값을 확인하세요: " + clusterNodes);
+                            "cluster.nodes 값을 확인하세요: " + clusterNodes);
         }
 
         try {
@@ -117,7 +118,7 @@ public class RedissonConfig {
         } catch (Exception e) {
             throw new IllegalStateException(
                     "[RedissonConfig] Cluster Server 클라이언트 생성 실패 — nodes=" +
-                    Arrays.toString(addresses) + " / 원인: " + e.getMessage(), e);
+                            Arrays.toString(addresses) + " / 원인: " + e.getMessage(), e);
         }
     }
 }
