@@ -22,7 +22,7 @@ spring:
       minimum-idle: 3
       connection-timeout: 30000
       validation-timeout: 5000     # 커넥션 유효성 검사 타임아웃 5초
-      idle-timeout: 600000
+      idle-timeout: 300000         # 5분 (max-lifetime 10분보다 짧게 설정 — idleTimeout 비활성화 경고 수정)
       max-lifetime: 600000         # 10분 (기본 30분 → 단축): 죽은 커넥션이 pool에 오래 남지 않도록
       # 커넥션 유효성 검사: checkout 전 ping으로 ABORTED/죽은 커넥션 조기 감지
       connection-test-query: SELECT 1
