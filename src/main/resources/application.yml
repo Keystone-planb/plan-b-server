@@ -44,6 +44,7 @@ spring:
             dynamic-refresh-sources: true
 
   jpa:
+    open-in-view: false           # SSE 등 장기 요청에서 Tomcat 스레드가 DB 커넥션을 90초간 점유하는 현상 방지
     hibernate:
       ddl-auto: none              # update → none: 스키마 검사용 isolated connection 요청 제거
     show-sql: false               # 운영 환경 SQL 로그 비활성화 (성능 개선)
