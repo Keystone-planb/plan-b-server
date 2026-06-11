@@ -131,6 +131,7 @@ logging:
     # RestAccessDeniedHandler가 WARN으로 기록하므로 운영 모니터링에 지장 없음
     org.apache.catalina: WARN
     org.springframework.security: WARN
+    org.springframework.web.servlet.DispatcherServlet: WARN  # 403 Access Denied CloudWatch 알람 오발동 방지
 
 #ECS 헬스체크 설정
 management:
