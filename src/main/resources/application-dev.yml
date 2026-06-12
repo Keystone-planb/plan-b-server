@@ -3,6 +3,10 @@ spring:
     activate:
       on-profile: dev
 
+  jpa:
+    hibernate:
+      ddl-auto: update  # 빈 DB에 @Entity 기반 테이블 자동 생성 (dev 전용)
+
   data:
     redis:
       # t4g.micro 단일 노드 (Standalone 모드, 전송 중 암호화 활성화)
