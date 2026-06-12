@@ -1,8 +1,7 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <configuration>
 
-    <!-- 로컬 / 개발 환경: 짧은 시간 포맷 -->
-    <springProfile name="local">
+    <springProfile name="local, dev">
         <appender name="CONSOLE" class="ch.qos.logback.core.ConsoleAppender">
             <encoder>
                 <pattern>%d{HH:mm:ss.SSS} [%thread] [traceId=%X{traceId:-none}] %-5level %logger{36} - %msg%n</pattern>
@@ -14,7 +13,6 @@
         </root>
     </springProfile>
 
-    <!-- 운영 환경: 날짜 포함 전체 포맷 (CloudWatch 수집 기준) -->
     <springProfile name="prod">
         <appender name="CONSOLE" class="ch.qos.logback.core.ConsoleAppender">
             <encoder>
