@@ -70,7 +70,9 @@ public class RedissonConfig {
 
         try {
             config.useSingleServer()
-                    .setAddress(address);
+                    .setAddress(address)
+                    .setConnectionMinimumIdleSize(5)   // 기본값 24 → 5: dev t4g.micro 기동 시 TLS 핸드셰이크 횟수 감소
+                    .setConnectionPoolSize(10);         // 기본값 64 → 10: dev 저트래픽 환경에 적합
             return Redisson.create(config);
         } catch (Exception e) {
             throw new IllegalStateException(

@@ -5,7 +5,8 @@ spring:
 
   jpa:
     hibernate:
-      ddl-auto: update  # 빈 DB에 @Entity 기반 테이블 자동 생성 (dev 전용)
+      ddl-auto: none    # 테이블 생성 완료 후 none으로 전환 — 기동 시 스키마 비교 생략 (40~50초 단축)
+                        # 새 @Entity 추가 시 배포 전 임시로 update로 변경 후 배포, 이후 none으로 복구
 
   data:
     redis:
