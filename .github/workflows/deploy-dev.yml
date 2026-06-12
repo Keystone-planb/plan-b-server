@@ -102,7 +102,7 @@ jobs:
         uses: aws-actions/amazon-ecs-deploy-task-definition@v1
         with:
           task-definition: ${{ steps.task-def.outputs.task-definition }}
-          service: planb-dev-task-service
+          service: planb-dev-task-service-sceckwba
           cluster: planb-cluster
           wait-for-service-stability: true
 
