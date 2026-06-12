@@ -5,9 +5,9 @@ spring:
 
   data:
     redis:
-      # 클러스터 무력화
+      # 클러스터 무력화 — null로 명시해야 Lettuce가 Standalone 모드로 동작
       cluster:
-        nodes: ""
+        nodes: ~
         max-redirects: 0
 
       # 단일 노드 가성비 레디스 주소로 덮어쓰기
