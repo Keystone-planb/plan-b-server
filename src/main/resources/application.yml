@@ -31,17 +31,10 @@ spring:
 
   data:
     redis:
-      cluster:
-        nodes: ${SPRING_DATA_REDIS_HOST:localhost}:${SPRING_DATA_REDIS_PORT:6379}
-        max-redirects: 3
+      # 클러스터 설정은 application-prod.yml 로 분리
+      # dev/local 전용 standalone 설정은 각 프로필 yml 에서 host/port 지정
       ssl:
-        enabled: ${SPRING_DATA_REDIS_SSL_ENABLED:false} # AWS TLS 암호화 연결 대응
-      lettuce:
-        cluster:
-          refresh:
-            adaptive: true              # 노드 역할 변동 실시간 감지
-            period: 60000               # 60초마다 토폴로지 새로고침
-            dynamic-refresh-sources: true
+        enabled: ${SPRING_DATA_REDIS_SSL_ENABLED:false} # 각 프로필에서 오버라이드
 
   jpa:
     open-in-view: false           # SSE 등 장기 요청에서 Tomcat 스레드가 DB 커넥션을 90초간 점유하는 현상 방지

@@ -1,0 +1,17 @@
+spring:
+  config:
+    activate:
+      on-profile: prod
+
+  data:
+    redis:
+      # ElastiCache Serverless — 클러스터 모드
+      cluster:
+        nodes: ${SPRING_DATA_REDIS_HOST:localhost}:${SPRING_DATA_REDIS_PORT:6379}
+        max-redirects: 3
+      lettuce:
+        cluster:
+          refresh:
+            adaptive: true              # 노드 역할 변동 실시간 감지
+            period: 60000               # 60초마다 토폴로지 새로고침
+            dynamic-refresh-sources: true

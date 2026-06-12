@@ -5,22 +5,8 @@ spring:
 
   data:
     redis:
-      # 클러스터 무력화 — null로 명시해야 Lettuce가 Standalone 모드로 동작
-      cluster:
-        nodes: ~
-        max-redirects: 0
-
-      # 단일 노드 가성비 레디스 주소로 덮어쓰기
+      # t4g.micro 단일 노드 (Standalone 모드, 전송 중 암호화 활성화)
       host: ${SPRING_DATA_REDIS_HOST:localhost}
       port: ${SPRING_DATA_REDIS_PORT:6379}
-
-      # TLS 암호화 활성화
       ssl:
         enabled: ${SPRING_DATA_REDIS_SSL_ENABLED:true}
-
-      # 클러스터 전용 기능 끄기
-      lettuce:
-        cluster:
-          refresh:
-            adaptive: false
-            dynamic-refresh-sources: false
