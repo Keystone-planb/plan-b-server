@@ -49,7 +49,7 @@ public class PlaceAnalysisService {
      * [PENDING 고착 방지]
      * - 분석 실패 시에도 fallback 값을 저장해 status가 PENDING에서 COMPLETE로 전환
      */
-    @Async("analysisExecutor")
+    @Async("placeAutoAnalysisExecutor")
     public void triggerAnalysisAsync(String googlePlaceId) {
         log.info("[PlaceAnalysis] 자동 분석 트리거 - googlePlaceId: {}", googlePlaceId);
 
@@ -398,7 +398,7 @@ public class PlaceAnalysisService {
      * - DB에 해당 장소가 없거나 좌표가 null인 경우에만 Google API 호출
      * - AI 전체 분석(triggerAnalysisAsync)과 별개로 가볍게 실행
      */
-    @Async("analysisExecutor")
+    @Async("placeAutoAnalysisExecutor")
     public void ensureCoordinatesAsync(String googlePlaceId) {
         if (googlePlaceId == null || googlePlaceId.isBlank()) return;
         try {

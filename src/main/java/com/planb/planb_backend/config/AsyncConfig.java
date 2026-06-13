@@ -41,6 +41,27 @@ public class AsyncConfig {
     }
 
     /**
+     * 장소 자동 분석 전용 executor (triggerAnalysisAsync, ensureCoordinatesAsync).
+     * analysisExecutor(SSE 내부 병렬 분석)와 분리하여 pool 포화 시 분석 task가 폐기되는 문제 방지.
+     * - DiscardOldestPolicy: 큐 초과 시 가장 오래된 요청을 버리고 최신 요청 우선 처리
+     */
+    @Bean(name = "placeAutoAnalysisExecutor")
+    public Executor placeAutoAnalysisExecutor() {
+        ThreadPoolTaskExecutor executor = new ThreadPoolTaskExecutor();
+        executor.setCorePoolSize(2);
+        executor.setMaxPoolSize(3);
+        executor.setQueueCapacity(20);
+        executor.setThreadNamePrefix("place-auto-analysis-");
+        executor.setKeepAliveSeconds(60);
+        executor.setWaitForTasksToCompleteOnShutdown(true);
+        executor.setAwaitTerminationSeconds(30);
+        executor.setRejectedExecutionHandler(new ThreadPoolExecutor.DiscardOldestPolicy());
+        executor.setTaskDecorator(new MdcTaskDecorator());
+        executor.initialize();
+        return executor;
+    }
+
+    /**
      * SSE 스트리밍 파이프라인 전용 executor.
      * doStreamAsync() 외부 실행에만 사용 — analysisExecutor 포화 시 DiscardPolicy로
      * 스트리밍 task 자체가 폐기되는 문제를 방지한다.
