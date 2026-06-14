@@ -1140,7 +1140,7 @@ function initEnvBadge() {
     env        = 'dev';
     label      = '개발';
     badgeClass = 'bg-blue-100 text-blue-700';
-    switchHref  = 'https://api.planb-travel.cloud/admin';
+    switchHref  = 'https://api.planb-travel.cloud/admin/index.html';
     switchLabel = '운영 서버로 이동 →';
     switchClass = 'border-red-300 text-red-600 hover:bg-red-50';
   } else {
