@@ -182,11 +182,15 @@ public class PlaceAnalysisService {
         // [STEP 3] 플랫폼별 리뷰 통합 수집
         Map<String, List<String>> allReviews = collectAllReviews(place, googleDetails);
 
+        // [STEP 3.5] 리뷰 데이터 크기 제한 (OpenAI Connection reset 방지)
+        // 플랫폼별 최대 7개, 리뷰당 최대 150자 → 최대 2,100자 이내 보장
+        Map<String, List<String>> trimmedReviews = trimReviews(allReviews);
+
         log.info("======= [AI INPUT DATA CHECK] =======");
         log.info("대상 장소명(확정): {}", place.getName());
         log.info("대상 카테고리: {}", place.getCategory());
-        allReviews.forEach((platform, reviews) -> {
-            log.info("플랫폼: [{}] | 수집된 리뷰 개수: {}개", platform, reviews.size());
+        trimmedReviews.forEach((platform, reviews) -> {
+            log.info("플랫폼: [{}] | 전송 리뷰 개수: {}개", platform, reviews.size());
             if (!reviews.isEmpty()) {
                 log.info("플랫폼: [{}] | 첫 번째 리뷰 샘플: {}...", platform,
                         reviews.get(0).substring(0, Math.min(reviews.get(0).length(), 50)));
@@ -199,7 +203,7 @@ public class PlaceAnalysisService {
         Map<String, Object> aiResponse = openAiAnalysisService.requestAnalysis(
                 place.getName(),
                 place.getCategory(),
-                allReviews
+                trimmedReviews
         );
 
         log.info(">>>> AI 응답 수신 완료: {}", aiResponse);
@@ -318,6 +322,27 @@ public class PlaceAnalysisService {
         allReviews.put("Google", googleTexts);
         allReviews.put("Naver", naverTexts);
         return allReviews;
+    }
+
+    /**
+     * OpenAI 전송 전 리뷰 데이터 크기 제한
+     * - 플랫폼별 최대 7개 (관련성 높은 순서 유지)
+     * - 리뷰당 최대 150자 (space/type/mood 판단에 충분한 길이)
+     * - 최대 2,100자 이내 보장 → Connection reset 방지
+     */
+    private Map<String, List<String>> trimReviews(Map<String, List<String>> allReviews) {
+        final int MAX_REVIEWS = 7;
+        final int MAX_CHARS = 150;
+
+        Map<String, List<String>> trimmed = new HashMap<>();
+        allReviews.forEach((platform, reviews) -> {
+            List<String> limited = reviews.stream()
+                    .limit(MAX_REVIEWS)
+                    .map(r -> r.length() > MAX_CHARS ? r.substring(0, MAX_CHARS) : r)
+                    .collect(Collectors.toList());
+            trimmed.put(platform, limited);
+        });
+        return trimmed;
     }
 
     private String determineBestCategory(List<String> types) {
