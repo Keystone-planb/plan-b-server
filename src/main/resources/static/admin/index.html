@@ -38,6 +38,7 @@
     <div class="text-center mb-6">
       <div class="text-3xl font-black text-indigo-600 tracking-tight">Plan B</div>
       <div class="text-gray-400 text-xs mt-1">Admin Dashboard</div>
+      <div id="login-env-badge" class="mt-2 inline-block px-3 py-0.5 rounded-full text-xs font-semibold"></div>
     </div>
     <form onsubmit="handleLogin(event)" class="space-y-4">
       <div>
@@ -69,8 +70,12 @@
         <span class="text-lg font-black text-indigo-600">Plan B</span>
         <span class="text-gray-300">|</span>
         <span class="text-gray-600 font-medium">Admin</span>
+        <span id="env-badge" class="px-2 py-0.5 rounded-full text-xs font-semibold"></span>
       </div>
       <div class="flex items-center gap-4">
+        <a id="env-switch-btn" href="#" target="_blank"
+           class="text-xs font-semibold px-3 py-1.5 rounded-lg border transition hidden">
+        </a>
         <span id="hdr-nickname" class="text-gray-500 text-xs"></span>
         <button onclick="handleLogout()" class="text-xs text-gray-400 hover:text-red-500 transition">로그아웃</button>
       </div>

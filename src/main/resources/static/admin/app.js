@@ -34,6 +34,7 @@ const PLACE_SORT_COLS = ['id','name','type','space','mood','rating','userRatings
 // 초기 진입
 // ════════════════════════════════════════════════════════════════════════════
 window.addEventListener('DOMContentLoaded', () => {
+  initEnvBadge();
   if (accessToken) { showAdmin(); switchTab('users'); loadUsers(); }
 });
 
@@ -1118,4 +1119,58 @@ function escJs(s) {
 function safe(s) {
   if (s == null) return '';
   return String(s).replace(/[^a-zA-Z0-9_-]/g,'_');
+}
+
+// ════════════════════════════════════════════════════════════════════════════
+// 환경 감지 및 배지 초기화
+// ════════════════════════════════════════════════════════════════════════════
+function initEnvBadge() {
+  const host = window.location.hostname;
+
+  let env, label, badgeClass, switchHref, switchLabel, switchClass;
+
+  if (host === 'api.planb-travel.cloud') {
+    env        = 'prod';
+    label      = '운영';
+    badgeClass = 'bg-red-100 text-red-700';
+    switchHref  = 'https://api-dev.planb-travel.cloud/admin';
+    switchLabel = '개발 서버로 이동 →';
+    switchClass = 'border-blue-300 text-blue-600 hover:bg-blue-50';
+  } else if (host === 'api-dev.planb-travel.cloud') {
+    env        = 'dev';
+    label      = '개발';
+    badgeClass = 'bg-blue-100 text-blue-700';
+    switchHref  = 'https://api.planb-travel.cloud/admin';
+    switchLabel = '운영 서버로 이동 →';
+    switchClass = 'border-red-300 text-red-600 hover:bg-red-50';
+  } else {
+    env        = 'local';
+    label      = '로컬';
+    badgeClass = 'bg-gray-100 text-gray-600';
+    switchHref  = null;
+    switchLabel = null;
+    switchClass = '';
+  }
+
+  // 헤더 배지
+  const badge = document.getElementById('env-badge');
+  if (badge) {
+    badge.textContent = label;
+    badge.className   = `px-2 py-0.5 rounded-full text-xs font-semibold ${badgeClass}`;
+  }
+
+  // 로그인 화면 배지
+  const loginBadge = document.getElementById('login-env-badge');
+  if (loginBadge) {
+    loginBadge.textContent = label;
+    loginBadge.className   = `mt-2 inline-block px-3 py-0.5 rounded-full text-xs font-semibold ${badgeClass}`;
+  }
+
+  // 환경 이동 버튼 (로컬이면 숨김)
+  const switchBtn = document.getElementById('env-switch-btn');
+  if (switchBtn && switchHref) {
+    switchBtn.href        = switchHref;
+    switchBtn.textContent = switchLabel;
+    switchBtn.className   = `text-xs font-semibold px-3 py-1.5 rounded-lg border transition ${switchClass}`;
+  }
 }
