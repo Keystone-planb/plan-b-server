@@ -371,6 +371,55 @@ public class TripService {
 
     /**
      * 시간대 겹침 검증
+    /**
+     * POST /api/trips/{tripId}/days/{day}/places/{tripPlaceId}/optimize/confirm
+     * 사용자가 대안 장소를 선택했을 때 TripPlace 교체 + 이후 장소 시간 일괄 업데이트
+     */
+    @Transactional
+    public void confirmOptimize(String email, Long tripPlaceId, OptimizeConfirmRequest request) {
+        // 1. 교체 대상 TripPlace 조회 (소유자 검증 포함)
+        TripPlace target = tripPlaceRepository.findByIdAndUserEmail(tripPlaceId, email)
+                .orElseThrow(() -> new IllegalArgumentException("일정을 찾을 수 없거나 접근 권한이 없습니다."));
+
+        // 2. 대상 장소 placeId · name 교체
+        target.replace(request.getNewPlaceId(), request.getNewName());
+
+        // 3. Place 테이블에 새 장소 좌표·카테고리 upsert
+        Place place = placeRepository.findByGooglePlaceId(request.getNewPlaceId())
+                .orElseGet(() -> {
+                    Place p = new Place();
+                    p.setGooglePlaceId(request.getNewPlaceId());
+                    p.setName(request.getNewName());
+                    return p;
+                });
+        place.setLatitude(request.getNewLatitude());
+        place.setLongitude(request.getNewLongitude());
+        if (request.getNewCategory() != null) place.setCategory(request.getNewCategory());
+        placeRepository.save(place);
+
+        // 4. affectedTimes 기준으로 이후 장소 시간 일괄 업데이트
+        Map<Long, OptimizeConfirmRequest.AffectedTimeItem> timeMap = new HashMap<>();
+        for (OptimizeConfirmRequest.AffectedTimeItem item : request.getAffectedTimes()) {
+            timeMap.put(item.getTripPlaceId(), item);
+        }
+
+        List<Long> affectedIds = request.getAffectedTimes().stream()
+                .map(OptimizeConfirmRequest.AffectedTimeItem::getTripPlaceId)
+                .collect(Collectors.toList());
+
+        List<TripPlace> affectedPlaces = tripPlaceRepository.findAllById(affectedIds);
+        for (TripPlace tp : affectedPlaces) {
+            OptimizeConfirmRequest.AffectedTimeItem item = timeMap.get(tp.getTripPlaceId());
+            if (item != null) {
+                tp.updateSchedule(item.getNewVisitTime(), item.getNewEndTime(), null, null);
+            }
+        }
+
+        log.info("[OptimizeConfirm] tripPlaceId={} → newPlaceId={} newName={} 교체 완료, 영향 장소={}개",
+                tripPlaceId, request.getNewPlaceId(), request.getNewName(), affectedPlaces.size());
+    }
+
+    /**
      * - visitTime 또는 endTime 중 하나라도 null이면 스킵 (시간 미설정 허용)
      * - excludeTripPlaceId: 자기 자신 수정 시 자신을 비교 대상에서 제외
      * - 겹침 조건: newStart < existEnd AND existStart < newEnd
