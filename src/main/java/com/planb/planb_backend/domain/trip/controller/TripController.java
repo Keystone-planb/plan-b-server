@@ -121,6 +121,21 @@ public class TripController {
     }
 
     @Operation(
+            summary = "날씨 복구 확정",
+            description = "AI 날씨 복구를 사용자가 승인했을 때 변경된 장소·시간을 DB에 저장합니다. " +
+                          "recovery_done 이벤트의 places 배열을 그대로 전달하면 됩니다."
+    )
+    @PostMapping("/{tripId}/days/{day}/recovery/confirm")
+    public ResponseEntity<Void> confirmRecovery(
+            @PathVariable Long tripId,
+            @PathVariable Integer day,
+            @Valid @RequestBody RecoveryConfirmRequest request,
+            Authentication authentication) {
+        tripService.confirmRecovery(authentication.getName(), tripId, day, request);
+        return ResponseEntity.noContent().build();
+    }
+
+    @Operation(
             summary = "대안 장소 선택 확정",
             description = "AI 동선 최적화에서 사용자가 선택한 대안 장소를 확정합니다. " +
                           "교체 대상 장소의 placeId·name을 변경하고, 이후 장소들의 방문 시간을 일괄 업데이트합니다."

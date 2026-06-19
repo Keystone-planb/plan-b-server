@@ -420,6 +420,62 @@ public class TripService {
     }
 
     /**
+     * POST /api/trips/{tripId}/days/{day}/recovery/confirm
+     * AI 날씨 복구를 사용자가 승인했을 때 변경된 장소·시간을 DB에 일괄 저장.
+     * recovery_done.places 배열을 그대로 전달받아 처리.
+     */
+    @Transactional
+    public void confirmRecovery(String email, Long tripId, int day, RecoveryConfirmRequest request) {
+        // 1. 소유자 검증
+        User user = findUser(email);
+        Trip trip = findTripByOwner(tripId, user);
+
+        // 2. 해당 일차 조회
+        Itinerary itinerary = itineraryRepository.findByTripAndDay(trip, day)
+                .orElseThrow(() -> new IllegalArgumentException(day + "일차 일정을 찾을 수 없습니다."));
+
+        // 3. 해당 일차 TripPlace를 Map으로 인덱싱
+        Map<Long, TripPlace> placeMap = new HashMap<>();
+        for (TripPlace tp : itinerary.getPlaces()) {
+            placeMap.put(tp.getTripPlaceId(), tp);
+        }
+
+        int changedCount = 0;
+        for (RecoveryConfirmRequest.PlaceItem item : request.getPlaces()) {
+            TripPlace tp = placeMap.get(item.getTripPlaceId());
+            if (tp == null) continue;
+
+            boolean placeChanged = item.getPlaceId() != null && !item.getPlaceId().equals(tp.getPlaceId());
+
+            // 4. 장소가 교체된 경우: placeId·name 업데이트 + Place 테이블 upsert
+            if (placeChanged) {
+                tp.replace(item.getPlaceId(), item.getName());
+
+                if (item.getLatitude() != null && item.getLongitude() != null) {
+                    Place place = placeRepository.findByGooglePlaceId(item.getPlaceId())
+                            .orElseGet(() -> {
+                                Place p = new Place();
+                                p.setGooglePlaceId(item.getPlaceId());
+                                p.setName(item.getName());
+                                return p;
+                            });
+                    place.setLatitude(item.getLatitude());
+                    place.setLongitude(item.getLongitude());
+                    if (item.getCategory() != null) place.setCategory(item.getCategory());
+                    placeRepository.save(place);
+                }
+                changedCount++;
+            }
+
+            // 5. 시간 업데이트 (장소 교체 여부와 무관하게 항상 적용)
+            tp.updateSchedule(item.getVisitTime(), item.getEndTime(), null, null);
+        }
+
+        log.info("[RecoveryConfirm] tripId={} day={} 장소 교체={}개 시간 업데이트={}개",
+                tripId, day, changedCount, request.getPlaces().size());
+    }
+
+    /**
      * - visitTime 또는 endTime 중 하나라도 null이면 스킵 (시간 미설정 허용)
      * - excludeTripPlaceId: 자기 자신 수정 시 자신을 비교 대상에서 제외
      * - 겹침 조건: newStart < existEnd AND existStart < newEnd
