@@ -538,8 +538,9 @@ public class TripService {
 
     /**
      * POST /api/trips/{tripId}/days/{day}/recovery/confirm
-     * AI 날씨 복구를 사용자가 승인했을 때 변경된 장소·시간을 DB에 일괄 저장.
-     * recovery_done.places 배열을 그대로 전달받아 처리.
+     * AI 서버가 계산한 장소·시간을 사용자가 확정할 때 DB에 일괄 저장.
+     * 시간 계산은 AI 서버(Distance Matrix + 구간별 이동수단)가 담당하며,
+     * 백엔드는 그 결과를 그대로 저장한다.
      */
     @Transactional
     public void confirmRecovery(String email, Long tripId, int day, RecoveryConfirmRequest request) {
@@ -584,7 +585,7 @@ public class TripService {
                 changedCount++;
             }
 
-            // 5. 시간 업데이트 (장소 교체 여부와 무관하게 항상 적용)
+            // 5. 시간 업데이트 (AI 서버가 계산한 visitTime/endTime 그대로 저장)
             tp.updateSchedule(item.getVisitTime(), item.getEndTime(), null, null);
         }
 
