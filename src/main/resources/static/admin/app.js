@@ -9,6 +9,7 @@ let refreshToken  = localStorage.getItem('admin_refresh')  || null;
 let allUsers         = [];
 let allPlaces        = [];
 let allNotifications = [];
+let allBookmarks     = [];
 
 let currentUserId    = null;
 let currentTripId    = null;
@@ -192,6 +193,7 @@ async function loadStats() {
     document.getElementById('stat-trips').textContent         = s.totalTrips.toLocaleString() + '개';
     document.getElementById('stat-places').textContent        = s.analyzedPlaces.toLocaleString() + ' / ' + s.totalPlaces.toLocaleString();
     document.getElementById('stat-notifications').textContent = s.unsentNotifications.toLocaleString() + ' / ' + s.totalNotifications.toLocaleString();
+    document.getElementById('stat-bookmarks').textContent     = s.totalBookmarks.toLocaleString() + '개';
   } catch (_) {
     // 통계 로드 실패 시 기존 기능에 영향 없이 조용히 무시
   }
@@ -201,7 +203,7 @@ async function loadStats() {
 // 탭 전환
 // ════════════════════════════════════════════════════════════════════════════
 function switchTab(name) {
-  ['users', 'places', 'notifications'].forEach(t => {
+  ['users', 'places', 'notifications', 'bookmarks'].forEach(t => {
     document.getElementById(`tab-${t}`).classList.toggle('hidden', t !== name);
     const btn = document.getElementById(`tab-btn-${t}`);
     if (t === name) {
@@ -214,6 +216,7 @@ function switchTab(name) {
   });
   if (name === 'places'        && allPlaces.length        === 0) loadDbPlaces();
   if (name === 'notifications' && allNotifications.length  === 0) loadNotifications();
+  if (name === 'bookmarks'     && allBookmarks.length      === 0) loadBookmarks();
 }
 
 // ════════════════════════════════════════════════════════════════════════════
@@ -987,6 +990,84 @@ function showPlaceJsonDetail(sid, field, label) {
   } catch {
     showTextModal(label, raw);
   }
+}
+
+// ════════════════════════════════════════════════════════════════════════════
+// ── 즐겨찾기 관리 탭
+// ════════════════════════════════════════════════════════════════════════════
+async function loadBookmarks() {
+  show('bm-loading'); hide('bm-table-wrap'); hide('bm-empty');
+  try {
+    allBookmarks = await apiFetch('/api/admin/bookmarks');
+    applyBookmarkFilter();
+  } catch (ex) {
+    document.getElementById('bm-loading').textContent = '불러오기 실패: ' + ex.message;
+  }
+}
+
+function applyBookmarkFilter() {
+  const q = (document.getElementById('bm-search').value || '').toLowerCase();
+  const f = allBookmarks.filter(b =>
+    !q ||
+    (b.userEmail  || '').toLowerCase().includes(q) ||
+    (b.userName   || '').toLowerCase().includes(q) ||
+    (b.name       || '').toLowerCase().includes(q) ||
+    (b.category   || '').toLowerCase().includes(q)
+  );
+  renderBookmarksTable(f);
+  document.getElementById('bm-count').textContent = `총 ${f.length}개 (전체 ${allBookmarks.length}개)`;
+}
+
+function renderBookmarksTable(list) {
+  hide('bm-loading');
+  if (list.length === 0) { show('bm-empty'); hide('bm-table-wrap'); return; }
+  hide('bm-empty'); show('bm-table-wrap');
+
+  document.getElementById('bm-tbody').innerHTML = list.map(b => `
+    <tr class="hover:bg-gray-50 transition">
+      <td class="px-4 py-3 text-gray-400 font-mono text-xs whitespace-nowrap">${b.bookmarkId ?? '—'}</td>
+      <td class="px-4 py-3 min-w-[150px]">
+        ${b.userName  ? `<div class="font-semibold text-xs text-gray-800">${escHtml(b.userName)}</div>` : ''}
+        ${b.userEmail ? `<div class="text-xs text-gray-500">${escHtml(b.userEmail)}</div>` : ''}
+        <div class="text-xs text-gray-300">ID: ${b.userId ?? '—'}</div>
+      </td>
+      <td class="px-4 py-3 font-medium max-w-[160px]">
+        <div class="truncate" title="${escHtml(b.name)}">${escHtml(b.name || '—')}</div>
+      </td>
+      <td class="px-4 py-3">
+        ${b.category
+          ? `<span class="bg-indigo-100 text-indigo-700 text-xs px-2 py-0.5 rounded-full">${escHtml(b.category)}</span>`
+          : '<span class="text-gray-300 text-xs">—</span>'}
+      </td>
+      <td class="px-4 py-3 text-gray-500 text-xs max-w-[200px]">
+        <div class="truncate" title="${escHtml(b.address)}">${escHtml(b.address || '—')}</div>
+      </td>
+      <td class="px-4 py-3 text-gray-400 text-xs max-w-[130px] truncate"
+          title="${escHtml(b.googlePlaceId)}">${escHtml(b.googlePlaceId || '—')}</td>
+      <td class="px-4 py-3 text-xs text-gray-500 font-mono whitespace-nowrap">
+        ${b.lat != null ? b.lat.toFixed(6) : '—'}
+      </td>
+      <td class="px-4 py-3 text-xs text-gray-500 font-mono whitespace-nowrap">
+        ${b.lng != null ? b.lng.toFixed(6) : '—'}
+      </td>
+      <td class="px-4 py-3 text-gray-400 text-xs whitespace-nowrap">${fmtDate(b.createdAt)}</td>
+      <td class="px-4 py-3">
+        <button onclick="deleteBookmark(${b.bookmarkId}, '${escJs(b.name)}')"
+                class="bg-red-500 hover:bg-red-600 text-white text-xs px-3 py-1 rounded transition whitespace-nowrap">
+          삭제
+        </button>
+      </td>
+    </tr>`).join('');
+}
+
+async function deleteBookmark(bookmarkId, name) {
+  if (!confirm(`⚠️ [즐겨찾기 삭제]\n\n장소명: ${name}\n\n정말 삭제하시겠습니까?`)) return;
+  try {
+    await apiFetch(`/api/admin/bookmarks/${bookmarkId}`, { method: 'DELETE' });
+    allBookmarks = allBookmarks.filter(b => b.bookmarkId !== bookmarkId);
+    applyBookmarkFilter();
+    loadStats();
+  } catch (ex) { alert('삭제 실패: ' + ex.message); }
 }
 
 // ════════════════════════════════════════════════════════════════════════════

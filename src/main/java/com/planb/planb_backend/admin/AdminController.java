@@ -97,6 +97,21 @@ public class AdminController {
         return ResponseEntity.ok(adminService.getUserMoodPreferences(userId));
     }
 
+    // ── 즐겨찾기 관리 ─────────────────────────────────────────────────────
+
+    @Operation(summary = "전체 즐겨찾기 목록 조회 (사용자 정보 포함, 최신순)")
+    @GetMapping("/bookmarks")
+    public ResponseEntity<List<AdminService.AdminBookmarkDto>> getAllBookmarks() {
+        return ResponseEntity.ok(adminService.getAllBookmarks());
+    }
+
+    @Operation(summary = "즐겨찾기 강제 삭제")
+    @DeleteMapping("/bookmarks/{bookmarkId}")
+    public ResponseEntity<Void> deleteBookmark(@PathVariable Long bookmarkId) {
+        adminService.deleteBookmark(bookmarkId);
+        return ResponseEntity.noContent().build();
+    }
+
     // ── 알림 관제 ──────────────────────────────────────────────────────────
 
     @Operation(summary = "날씨 알림 전체 목록 조회 (사용자·장소·여행 정보 포함, 최신순)")
