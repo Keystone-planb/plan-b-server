@@ -138,16 +138,17 @@ public class TripController {
     @Operation(
             summary = "대안 장소 선택 확정",
             description = "AI 동선 최적화에서 사용자가 선택한 대안 장소를 확정합니다. " +
-                          "교체 대상 장소의 placeId·name을 변경하고, 이후 장소들의 방문 시간을 일괄 업데이트합니다."
+                          "교체 대상 장소의 placeId·name을 변경하고, Google Distance Matrix API로 " +
+                          "실제 이동시간을 계산해 이후 장소들의 방문 시간을 자동으로 재계산합니다."
     )
     @PostMapping("/{tripId}/days/{day}/places/{tripPlaceId}/optimize/confirm")
-    public ResponseEntity<Void> confirmOptimize(
+    public ResponseEntity<OptimizeConfirmResponse> confirmOptimize(
             @PathVariable Long tripId,
             @PathVariable Integer day,
             @PathVariable Long tripPlaceId,
             @Valid @RequestBody OptimizeConfirmRequest request,
             Authentication authentication) {
-        tripService.confirmOptimize(authentication.getName(), tripPlaceId, request);
-        return ResponseEntity.noContent().build();
+        OptimizeConfirmResponse response = tripService.confirmOptimize(authentication.getName(), tripPlaceId, request);
+        return ResponseEntity.ok(response);
     }
 }

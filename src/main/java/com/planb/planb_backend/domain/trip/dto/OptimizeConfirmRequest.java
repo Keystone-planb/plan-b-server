@@ -32,10 +32,10 @@ public class OptimizeConfirmRequest {
     private String newType;
 
     /**
-     * 이 대안 교체로 인해 변경되는 이후 장소들의 시간.
-     * AI 서버 SSE alternative_found.affectedTimes 값을 그대로 전달.
+     * 이후 장소 시간 수동 지정 (선택값).
+     * null 또는 빈 배열이면 백엔드가 Google Distance Matrix API로 자동 재계산한다.
+     * AI 서버 SSE affectedTimes 값을 그대로 전달할 때만 사용.
      */
-    @NotNull(message = "affectedTimes는 필수입니다.")
     private List<AffectedTimeItem> affectedTimes;
 
     @Getter
