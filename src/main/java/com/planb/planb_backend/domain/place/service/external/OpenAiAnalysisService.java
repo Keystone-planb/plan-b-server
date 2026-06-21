@@ -3,8 +3,12 @@ package com.planb.planb_backend.domain.place.service.external;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.http.client.reactive.ReactorClientHttpConnector;
 import org.springframework.stereotype.Service;
 import org.springframework.web.reactive.function.client.WebClient;
+import reactor.netty.http.client.HttpClient;
+import reactor.netty.resources.ConnectionProvider;
+import reactor.util.retry.Retry;
 
 import java.time.Duration;
 import java.util.List;
@@ -19,8 +23,21 @@ public class OpenAiAnalysisService {
 
     private final ObjectMapper objectMapper = new ObjectMapper();
 
+    // [커넥션 풀] 좀비 연결 방지
+    // - maxIdleTime(10s): 10초 이상 유휴 연결은 즉시 제거 → OpenAI가 먼저 끊기 전에 선제 정리
+    // - evictInBackground(30s): 30초마다 백그라운드에서 만료 연결 청소
+    // → ECONNRESET(-104) "Connection reset by peer" 에러 원천 차단
+    private static final ConnectionProvider OPENAI_POOL = ConnectionProvider.builder("openai-pool")
+            .maxConnections(10)
+            .maxIdleTime(Duration.ofSeconds(10))
+            .evictInBackground(Duration.ofSeconds(30))
+            .build();
+
     private final WebClient webClient = WebClient.builder()
             .baseUrl("https://api.openai.com/v1")
+            .clientConnector(new ReactorClientHttpConnector(
+                    HttpClient.create(OPENAI_POOL)
+                            .responseTimeout(Duration.ofSeconds(20))))
             .build();
 
     /**
@@ -81,7 +98,12 @@ public class OpenAiAnalysisService {
                     ))
                     .retrieve()
                     .bodyToMono(Map.class)
-                    .block(Duration.ofSeconds(20)); // 20초 초과 시 IllegalStateException → catch(Exception)으로 fallback 처리
+                    // [재시도] ECONNRESET 발생 시 최대 2회 즉시 재시도 (안전망)
+                    // ECONNRESET은 즉각 실패라 재시도 오버헤드 거의 없음
+                    .retryWhen(Retry.max(2)
+                            .filter(e -> e.getMessage() != null
+                                    && e.getMessage().contains("Connection reset")))
+                    .block(Duration.ofSeconds(30)); // 재시도 포함 여유 있게 30초
 
             if (response != null && response.containsKey("choices")) {
                 List<Map<String, Object>> choices = (List<Map<String, Object>>) response.get("choices");
