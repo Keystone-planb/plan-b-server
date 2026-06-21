@@ -133,7 +133,7 @@ public class GooglePlaceApiService {
             case "CAFE"              -> "cafe";
             case "SIGHTS"            -> "tourist_attraction";
             case "SHOP"              -> "shopping_mall";
-            case "MARKET"            -> "establishment";
+            case "MARKET"            -> "grocery_or_supermarket";
             case "THEME"             -> "amusement_park";
             case "CULTURE"           -> "museum";
             case "PARK"              -> "park";
