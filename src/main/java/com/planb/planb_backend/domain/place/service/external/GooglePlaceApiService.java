@@ -2,8 +2,11 @@ package com.planb.planb_backend.domain.place.service.external;
 
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.http.client.reactive.ReactorClientHttpConnector;
 import org.springframework.stereotype.Service;
 import org.springframework.web.reactive.function.client.WebClient;
+import reactor.netty.http.client.HttpClient;
+import reactor.netty.resources.ConnectionProvider;
 
 import java.time.Duration;
 import java.util.*;
@@ -16,8 +19,17 @@ public class GooglePlaceApiService {
     @Value("${google.maps.api-key}")
     private String apiKey;
 
+    private static final ConnectionProvider GOOGLE_POOL = ConnectionProvider.builder("google-pool")
+            .maxConnections(10)
+            .maxIdleTime(Duration.ofSeconds(10))
+            .evictInBackground(Duration.ofSeconds(30))
+            .build();
+
     private final WebClient webClient = WebClient.builder()
             .baseUrl("https://maps.googleapis.com/maps/api/place")
+            .clientConnector(new ReactorClientHttpConnector(
+                    HttpClient.create(GOOGLE_POOL)
+                            .responseTimeout(Duration.ofSeconds(10))))
             .build();
 
     /**
