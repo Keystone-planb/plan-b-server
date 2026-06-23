@@ -48,7 +48,10 @@ class RecommendationStreamTest {
     @BeforeEach
     void setUp() {
         // 동기 Executor로 교체 → CompletableFuture가 현재 스레드에서 즉시 실행
+        // analysisExecutor: 병렬 분석을 동기로 실행
+        // streamingExecutor: SSE 파이프라인을 동기로 실행 (테스트 스레드에서 즉시 완료 보장)
         ReflectionTestUtils.setField(service, "analysisExecutor", (Executor) Runnable::run);
+        ReflectionTestUtils.setField(service, "streamingExecutor", (Executor) Runnable::run);
 
         // 공통 스텁
         lenient().when(tripPlaceRepository.findByTripId(any())).thenReturn(Collections.emptyList());
@@ -228,10 +231,10 @@ class RecommendationStreamTest {
         // When
         service.doStreamAsync(ctx, emitter);
 
-        // Then: CAFE는 FOOD 요청에서 탈락 → place 이벤트 없음
+        // Then: CAFE는 FOOD 요청에서 탈락 → place 이벤트 없음, warning 이벤트 전송
         long placeCount = emitter.events.stream().filter("place"::equals).count();
         assertThat(placeCount).isZero();
-        assertThat(emitter.events).containsExactly("progress", "done");
+        assertThat(emitter.events).containsExactly("progress", "warning", "done");
         assertThat(emitter.completeCalled).isTrue();
     }
 
@@ -319,6 +322,13 @@ class RecommendationStreamTest {
         boolean completeCalled = false;
 
         RecordingEmitter() { super(60_000L); }
+
+        // 단위 테스트 환경에서는 실제 HTTP 응답이 없으므로
+        // onTimeout / onCompletion / onError 콜백 등록을 no-op으로 처리
+        // (SseEmitter 내부 handler가 null이어서 발생하는 NPE/IllegalStateException 방지)
+        @Override public void onTimeout(Runnable callback) {}
+        @Override public void onCompletion(Runnable callback) {}
+        @Override public void onError(java.util.function.Consumer<Throwable> callback) {}
 
         @Override
         public void send(SseEventBuilder builder) throws IOException {

@@ -5,6 +5,7 @@ import com.planb.planb_backend.domain.notification.repository.NotificationReposi
 import com.planb.planb_backend.domain.place.entity.Place;
 import com.planb.planb_backend.domain.place.repository.PlaceRepository;
 import com.planb.planb_backend.domain.preference.service.PreferenceService;
+import com.planb.planb_backend.domain.trip.dto.AddLocationResponse;
 import com.planb.planb_backend.domain.trip.entity.TripPlace;
 import com.planb.planb_backend.domain.trip.repository.TripPlaceRepository;
 import com.planb.planb_backend.domain.user.entity.Role;
@@ -80,11 +81,12 @@ class NotificationServiceTest {
         when(userRepository.findByEmail("test@planb.com")).thenReturn(Optional.of(user));
         when(tripPlaceRepository.findById(200L)).thenReturn(Optional.of(tripPlace));
         when(placeRepository.findById(301L)).thenReturn(Optional.of(newPlace));
+        when(tripPlaceRepository.save(any())).thenReturn(tripPlace);
 
-        String result = notificationService.replacePlan(100L, 301L, "test@planb.com");
+        AddLocationResponse result = notificationService.replacePlan(100L, 301L, "test@planb.com");
 
-        // 응답 메시지 확인
-        assertThat(result).contains("일정이 교체되었습니다");
+        // 응답 확인 (null 아닌 것만 검증 — 메시지 필드 제거됨)
+        assertThat(result).isNotNull();
 
         // TripPlace 교체 확인
         assertThat(tripPlace.getName()).isEqualTo("[새 카페] (PLAN B)");
