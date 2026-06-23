@@ -10,7 +10,7 @@ spring:
 
   data:
     redis:
-      # t4g.micro 단일 노드 (Standalone 모드, 전송 중 암호화 활성화)
+      # t4g.micro 단일 노드 (Standalone 모드,전송 중 암호화 활성화)
       host: ${SPRING_DATA_REDIS_HOST:localhost}
       port: ${SPRING_DATA_REDIS_PORT:6379}
       ssl:
