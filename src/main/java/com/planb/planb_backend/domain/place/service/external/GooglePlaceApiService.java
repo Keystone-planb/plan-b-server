@@ -180,6 +180,21 @@ public class GooglePlaceApiService {
         }
     }
 
+    /**
+     * 도보 / 대중교통 / 자동차 3가지 이동시간을 한 번에 반환
+     * impact API에서 사용자가 이동수단을 직접 선택할 수 있도록 모두 계산
+     * 각 모드별로 Distance Matrix 호출 → 실패 시 Haversine 폴백
+     */
+    public Map<TransportMode, Integer> getAllTravelTimeMinutes(
+            double fromLat, double fromLng, double toLat, double toLng) {
+
+        Map<TransportMode, Integer> result = new LinkedHashMap<>();
+        for (TransportMode mode : List.of(TransportMode.WALK, TransportMode.TRANSIT, TransportMode.CAR)) {
+            result.put(mode, getTravelTimeMinutes(fromLat, fromLng, toLat, toLng, mode));
+        }
+        return result;
+    }
+
     /** Distance Matrix 실패 시 Haversine 직선거리 + 고정 속도로 폴백 */
     private int fallbackTravelMinutes(double fromLat, double fromLng,
                                       double toLat, double toLng,

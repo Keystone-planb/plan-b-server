@@ -12,7 +12,9 @@ import com.planb.planb_backend.domain.place.repository.PlaceRepository;
 import com.planb.planb_backend.domain.place.service.external.GooglePlaceApiService;
 import com.planb.planb_backend.domain.place.service.external.RecommendationService;
 import com.planb.planb_backend.domain.preference.service.PreferenceService;
+import com.planb.planb_backend.domain.recommendation.dto.UnifiedReplaceResponse;
 import com.planb.planb_backend.domain.trip.dto.AddLocationResponse;
+import com.planb.planb_backend.domain.trip.entity.TransportMode;
 import com.planb.planb_backend.domain.trip.entity.TripPlace;
 import com.planb.planb_backend.domain.trip.repository.TripPlaceRepository;
 import com.planb.planb_backend.domain.user.entity.User;
@@ -23,10 +25,15 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDate;
+import java.time.LocalTime;
 import java.time.ZoneId;
+import java.time.format.DateTimeFormatter;
+import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.stream.Collectors;
 
 @Slf4j
@@ -45,6 +52,7 @@ public class NotificationService {
 
     private static final int NEARBY_RADIUS_METERS = 8_000;
     private static final int MAX_ALTERNATIVES     = 3;
+    private static final DateTimeFormatter TIME_FMT = DateTimeFormatter.ofPattern("HH:mm");
 
     private final ObjectMapper objectMapper = new ObjectMapper();
 
@@ -219,7 +227,7 @@ public class NotificationService {
      * @throws IllegalArgumentException newPlaceId가 알림 대안 목록에 없을 때 (400)
      */
     @Transactional
-    public AddLocationResponse replacePlan(Long notificationId, Long newPlaceId, String userEmail) {
+    public UnifiedReplaceResponse replacePlan(Long notificationId, Long newPlaceId, String userEmail) {
         Notification notification = notificationRepository.findById(notificationId)
                 .orElseThrow(() -> new IllegalArgumentException("알림을 찾을 수 없습니다."));
 
@@ -239,7 +247,7 @@ public class NotificationService {
                 .orElseThrow(() -> new IllegalArgumentException("장소를 찾을 수 없습니다."));
 
         tripPlace.replace(newPlace.getGooglePlaceId(), newPlace.getName());
-        TripPlace saved = tripPlaceRepository.save(tripPlace);
+        tripPlaceRepository.save(tripPlace);
 
         // 3) 알림 읽음 처리
         notification.setRead(true);
@@ -248,8 +256,25 @@ public class NotificationService {
         // 4) 피드백: 선택 +1.0 / 나머지 -0.3
         preferenceService.applyFeedback(notification.getUserId(), altIds, newPlaceId);
 
-        log.info("[Notification] 일정 교체 완료 — planId={}, newPlaceId={}", notification.getPlanId(), newPlaceId);
-        return AddLocationResponse.from(saved);
+        // 5) 새 장소 좌표 기반으로 이후 일정 시간 재계산
+        //    대안 장소는 원래 장소와 위치가 다를 수 있으므로 SOS 경로와 동일하게 처리
+        List<UnifiedReplaceResponse.UpdatedSchedule> updatedSchedules = Collections.emptyList();
+        if (newPlace.getLatitude() != null && newPlace.getLongitude() != null
+                && tripPlace.getEndTime() != null) {
+            updatedSchedules = recalculateSubsequentSchedules(tripPlace, newPlace);
+        }
+
+        log.info("[Notification] 일정 교체 완료 — planId={}, newPlaceId={}, 이후 일정 재계산={}개",
+                notification.getPlanId(), newPlaceId, updatedSchedules.size());
+
+        return UnifiedReplaceResponse.builder()
+                .tripPlaceId(tripPlace.getTripPlaceId())
+                .newGooglePlaceId(newPlace.getGooglePlaceId())
+                .newPlaceName(tripPlace.getName())   // replace() 후 "[장소명] (PLAN B)" 형식
+                .visitTime(tripPlace.getVisitTime())
+                .endTime(tripPlace.getEndTime())
+                .updatedSchedules(updatedSchedules)
+                .build();
     }
 
     // ───────────────────────────────────────────
@@ -346,5 +371,69 @@ public class NotificationService {
         if (!ownerId.equals(user.getId())) {
             throw new SecurityException("본인의 알림만 접근할 수 있습니다.");
         }
+    }
+
+    /**
+     * 장소 교체 후 이후 일정 시간 재계산 (날씨 경로용)
+     * TripService.replaceTripPlace()와 동일한 로직 — 구간별 이동수단 + Haversine 폴백
+     */
+    private List<UnifiedReplaceResponse.UpdatedSchedule> recalculateSubsequentSchedules(
+            TripPlace replaced, Place newPlace) {
+
+        TransportMode tripMode = Optional.ofNullable(
+                replaced.getItinerary().getTrip().getTransportMode())
+                .orElse(TransportMode.WALK);
+
+        List<TripPlace> subsequent = tripPlaceRepository.findSubsequentInItinerary(
+                replaced.getItinerary().getItineraryId(), replaced.getVisitOrder());
+
+        if (subsequent.isEmpty()) return Collections.emptyList();
+
+        List<UnifiedReplaceResponse.UpdatedSchedule> result = new ArrayList<>();
+
+        double prevLat     = newPlace.getLatitude();
+        double prevLng     = newPlace.getLongitude();
+        String prevEndTime = replaced.getEndTime();
+        TransportMode prevMode = Optional.ofNullable(replaced.getTransportMode()).orElse(tripMode);
+
+        for (TripPlace curr : subsequent) {
+            if (curr.getVisitTime() == null || curr.getEndTime() == null) break;
+
+            Place currPlace = placeRepository.findByGooglePlaceId(curr.getPlaceId()).orElse(null);
+            if (currPlace == null || currPlace.getLatitude() == null) break;
+
+            int travelMin = googlePlaceApiService.getTravelTimeMinutes(
+                    prevLat, prevLng,
+                    currPlace.getLatitude(), currPlace.getLongitude(),
+                    prevMode);
+
+            LocalTime origVisit = LocalTime.parse(curr.getVisitTime());
+            LocalTime origEnd   = LocalTime.parse(curr.getEndTime());
+            long durationMin    = ChronoUnit.MINUTES.between(origVisit, origEnd);
+            if (durationMin <= 0) durationMin = 60;
+
+            LocalTime newVisit = LocalTime.parse(prevEndTime).plusMinutes(travelMin);
+            LocalTime newEnd   = newVisit.plusMinutes(durationMin);
+
+            String newVisitStr = newVisit.format(TIME_FMT);
+            String newEndStr   = newEnd.format(TIME_FMT);
+
+            curr.updateSchedule(newVisitStr, newEndStr, null, null);
+
+            result.add(UnifiedReplaceResponse.UpdatedSchedule.builder()
+                    .tripPlaceId(curr.getTripPlaceId())
+                    .name(curr.getName())
+                    .visitTime(newVisitStr)
+                    .endTime(newEndStr)
+                    .travelMinFromPrev(travelMin)
+                    .build());
+
+            prevLat     = currPlace.getLatitude();
+            prevLng     = currPlace.getLongitude();
+            prevEndTime = newEndStr;
+            prevMode    = Optional.ofNullable(curr.getTransportMode()).orElse(tripMode);
+        }
+
+        return result;
     }
 }

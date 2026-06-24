@@ -28,8 +28,8 @@ public class TripDetailResponse {
     private final List<Mood> travelStyles;
     private final List<ItineraryResponse> itineraries;
 
-    /** DB places 테이블에서 배치 조회한 장소 메타데이터 (좌표 + 카테고리 + AI 분석 타입) */
-    public record PlaceInfo(Double latitude, Double longitude, String category, PlaceType type) {}
+    /** DB places 테이블에서 배치 조회한 장소 메타데이터 (좌표 + 카테고리 + AI 분석 타입 + 실내외 구분) */
+    public record PlaceInfo(Double latitude, Double longitude, String category, PlaceType type, String space) {}
 
     private TripDetailResponse(Trip trip, Map<String, PlaceInfo> placeInfoMap) {
         this.tripId       = trip.getTripId();
@@ -100,7 +100,8 @@ public class TripDetailResponse {
                 Double lng      = info != null ? info.longitude() : null;
                 String category = info != null ? info.category()  : null;
                 PlaceType type  = info != null ? info.type()      : null;
-                result.add(PlaceResponse.from(current, gap, lat, lng, category, type));
+                String space    = info != null ? info.space()     : null;
+                result.add(PlaceResponse.from(current, gap, lat, lng, category, type, space));
             }
             return result;
         }
@@ -129,12 +130,14 @@ public class TripDetailResponse {
         private final String category;
         /** AI 분석 완료 장소의 PlaceType (FOOD / CAFE / SIGHTS / PARK / MARKET). 미분석 시 null */
         private final PlaceType type;
+        /** 실내외 구분 (INDOOR / OUTDOOR / MIX). AI 미분석 시 null — AI 서버 recovery에서 사용 */
+        private final String space;
         /** 메모 목록 (생성 시각 오름차순) */
         private final List<MemoResponse> memos;
 
         private PlaceResponse(TripPlace place, Integer transitGapMinutes,
                               Double latitude, Double longitude,
-                              String category, PlaceType type) {
+                              String category, PlaceType type, String space) {
             this.tripPlaceId        = place.getTripPlaceId();
             this.placeId            = place.getPlaceId();
             this.name               = place.getName();
@@ -149,6 +152,7 @@ public class TripDetailResponse {
             this.longitude          = longitude;
             this.category           = category;
             this.type               = type;
+            this.space              = space;
             this.memos              = place.getMemos().stream()
                                           .map(MemoResponse::from)
                                           .collect(Collectors.toList());
@@ -156,8 +160,8 @@ public class TripDetailResponse {
 
         public static PlaceResponse from(TripPlace place, Integer transitGapMinutes,
                                          Double latitude, Double longitude,
-                                         String category, PlaceType type) {
-            return new PlaceResponse(place, transitGapMinutes, latitude, longitude, category, type);
+                                         String category, PlaceType type, String space) {
+            return new PlaceResponse(place, transitGapMinutes, latitude, longitude, category, type, space);
         }
     }
 }
