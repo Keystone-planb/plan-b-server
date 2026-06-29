@@ -5,6 +5,9 @@ import com.planb.planb_backend.domain.place.entity.Place;
 import com.planb.planb_backend.domain.place.service.external.PlaceAnalysisService;
 import com.planb.planb_backend.domain.place.service.external.RecommendationService;
 import com.planb.planb_backend.domain.recommendation.dto.*;
+import com.planb.planb_backend.domain.recommendation.dto.AlternativeImpactRequest;
+import com.planb.planb_backend.domain.recommendation.dto.AlternativeImpactResponse;
+import com.planb.planb_backend.domain.recommendation.dto.UnifiedReplaceResponse;
 import com.planb.planb_backend.domain.trip.dto.AddLocationResponse;
 import com.planb.planb_backend.domain.trip.dto.UpdateScheduleRequest;
 import com.planb.planb_backend.domain.trip.service.TripService;
@@ -153,38 +156,55 @@ public class RecommendationController {
     }
 
     /**
+     * POST /api/plans/{tripPlaceId}/alternatives/impact
+     * 대안 장소 선택 전 영향 미리보기
+     * 프론트엔드 ReplaceConfirmSheet 타임라인(이전→이동→대안→이동→다음) 렌더링용
+     */
+    @Operation(
+        summary = "대안 장소 영향 계산",
+        description = "대안 장소로 교체했을 때 이전/다음 장소 이동시간 및 후속 일정 밀림 시간을 미리 계산합니다."
+    )
+    @PostMapping("/plans/{tripPlaceId}/alternatives/impact")
+    public ResponseEntity<AlternativeImpactResponse> alternativeImpact(
+            @PathVariable Long tripPlaceId,
+            @RequestBody AlternativeImpactRequest request,
+            Authentication authentication) {
+
+        AlternativeImpactResponse response =
+                tripService.calculateAlternativeImpact(authentication.getName(), tripPlaceId, request);
+        return ResponseEntity.ok(response);
+    }
+
+    /**
      * POST /api/plans/{planId}/replace
-     * 일정(TripPlace)의 장소를 새로운 장소로 대체
-     * 이름은 자동으로 "[새 장소명] (PLAN B)" 형식으로 변경
+     * 일정 장소 PLAN B 대체 — 통합 응답 (SOS/갭 경로)
+     * - 이름: "[새 장소명] (PLAN B)" 자동 변경
+     * - 좌표(newLatitude/newLongitude) 전달 시 이후 일정 시간 자동 재계산
      */
     @Operation(
         summary = "일정 장소 대체 (PLAN B)",
-        description = "특정 일정(planId = tripPlaceId)의 장소를 새로운 장소로 교체합니다. 이름에 (PLAN B) 표시가 추가됩니다."
+        description = "특정 일정(planId)의 장소를 교체합니다. 좌표를 함께 보내면 이후 일정 시간이 자동 재계산됩니다."
     )
     @PostMapping("/plans/{planId}/replace")
-    public ResponseEntity<ReplaceResponse> replace(
+    public ResponseEntity<UnifiedReplaceResponse> replace(
             @PathVariable Long planId,
             @RequestBody ReplaceRequest request,
             Authentication authentication) {
 
         if (request.getNewGooglePlaceId() == null || request.getNewGooglePlaceId().isBlank()) {
-            return ResponseEntity.badRequest().body(
-                    ReplaceResponse.builder().message("newGooglePlaceId는 필수입니다.").build());
+            return ResponseEntity.badRequest().build();
         }
 
-        tripService.replaceTripPlace(
+        UnifiedReplaceResponse response = tripService.replaceTripPlace(
                 authentication.getName(),
                 planId,
                 request.getNewGooglePlaceId(),
-                request.getNewPlaceName()
+                request.getNewPlaceName(),
+                request.getNewLatitude(),
+                request.getNewLongitude()
         );
 
-        return ResponseEntity.ok(ReplaceResponse.builder()
-                .tripPlaceId(planId)
-                .googlePlaceId(request.getNewGooglePlaceId())
-                .name("[" + request.getNewPlaceName() + "] (PLAN B)")
-                .message("일정이 PLAN B로 대체되었습니다.")
-                .build());
+        return ResponseEntity.ok(response);
     }
 
     /**

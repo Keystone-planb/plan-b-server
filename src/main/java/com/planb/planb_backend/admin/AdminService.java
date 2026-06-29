@@ -1,5 +1,7 @@
 package com.planb.planb_backend.admin;
 
+import com.planb.planb_backend.domain.bookmark.entity.Bookmark;
+import com.planb.planb_backend.domain.bookmark.repository.BookmarkRepository;
 import com.planb.planb_backend.domain.notification.entity.Notification;
 import com.planb.planb_backend.domain.notification.scheduler.WeatherScheduler;
 import com.planb.planb_backend.domain.notification.service.ExpoPushService;
@@ -37,6 +39,7 @@ public class AdminService {
     private final RefreshTokenRepository      refreshTokenRepository;
     private final UserPreferenceRepository    userPreferenceRepository;
     private final PlaceRepository             placeRepository;
+    private final BookmarkRepository          bookmarkRepository;
     private final AdminNotificationRepository adminNotificationRepository;
     private final AdminEmailAuthRepository    adminEmailAuthRepository;
     private final ExpoPushService             expoPushService;
@@ -195,6 +198,29 @@ public class AdminService {
         log.info("[Admin] 날씨 스케줄러 수동 실행 완료");
     }
 
+    // ── 즐겨찾기 전체 목록 ──────────────────────────────────────────────────
+    @Transactional(readOnly = true)
+    public List<AdminBookmarkDto> getAllBookmarks() {
+        List<Bookmark> bookmarks = bookmarkRepository.findAll(Sort.by(Sort.Direction.DESC, "createdAt"));
+
+        List<Long> userIds = bookmarks.stream().map(Bookmark::getUserId).distinct().toList();
+        Map<Long, User> userMap = userRepository.findAllById(userIds).stream()
+                .collect(Collectors.toMap(User::getId, u -> u));
+
+        return bookmarks.stream()
+                .map(b -> AdminBookmarkDto.from(b, userMap.get(b.getUserId())))
+                .toList();
+    }
+
+    // ── 즐겨찾기 강제 삭제 ─────────────────────────────────────────────────
+    @Transactional
+    public void deleteBookmark(Long bookmarkId) {
+        Bookmark bookmark = bookmarkRepository.findById(bookmarkId)
+                .orElseThrow(() -> new IllegalArgumentException("즐겨찾기를 찾을 수 없습니다: " + bookmarkId));
+        log.info("[Admin] 즐겨찾기 삭제: bookmarkId={}, userId={}, place={}", bookmarkId, bookmark.getUserId(), bookmark.getName());
+        bookmarkRepository.delete(bookmark);
+    }
+
     // ── 대시보드 요약 통계 ─────────────────────────────────────────────────
     @Transactional(readOnly = true)
     public AdminStatsDto getStats() {
@@ -204,10 +230,12 @@ public class AdminService {
         long analyzedPlaces     = placeRepository.countByTypeIsNotNullAndSpaceIsNotNullAndMoodIsNotNull();
         long totalNotifications = adminNotificationRepository.count();
         long unsentNotifications= adminNotificationRepository.countByPushSentAtIsNull();
+        long totalBookmarks     = bookmarkRepository.count();
         return new AdminStatsDto(
                 totalUsers, totalTrips,
                 totalPlaces, analyzedPlaces,
-                totalNotifications, unsentNotifications);
+                totalNotifications, unsentNotifications,
+                totalBookmarks);
     }
 
     // ── 날씨 알림 수동 재발송 ──────────────────────────────────────────────
@@ -388,8 +416,40 @@ public class AdminService {
             long totalPlaces,
             long analyzedPlaces,
             long totalNotifications,
-            long unsentNotifications
+            long unsentNotifications,
+            long totalBookmarks
     ) {}
+
+    /** 즐겨찾기 관리 DTO */
+    public record AdminBookmarkDto(
+            Long   bookmarkId,
+            Long   userId,
+            String userEmail,
+            String userName,
+            String googlePlaceId,
+            String name,
+            String category,
+            String address,
+            Double lat,
+            Double lng,
+            String createdAt
+    ) {
+        static AdminBookmarkDto from(Bookmark b, User user) {
+            return new AdminBookmarkDto(
+                    b.getId(),
+                    b.getUserId(),
+                    user != null ? user.getEmail()    : null,
+                    user != null ? user.getNickname() : null,
+                    b.getGooglePlaceId(),
+                    b.getName(),
+                    b.getCategory(),
+                    b.getAddress(),
+                    b.getLat(),
+                    b.getLng(),
+                    b.getCreatedAt() != null ? b.getCreatedAt().toString() : null
+            );
+        }
+    }
 
     /**
      * 날씨 알림 모니터링 DTO

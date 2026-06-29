@@ -75,4 +75,26 @@ public interface TripPlaceRepository extends JpaRepository<TripPlace, Long> {
            "ORDER BY tp.itinerary.date ASC, tp.visitTime ASC NULLS LAST")
     List<TripPlace> findByTripIdOrderByDateAndVisitOrder(@Param("tripId") Long tripId);
 
+    /**
+     * [장소 교체 확정] 동일 일차에서 특정 visitOrder 이후 장소 조회 (방문 순서 오름차순)
+     * Distance Matrix 기반 시간 재계산 시 사용
+     */
+    @Query("SELECT tp FROM TripPlace tp " +
+           "WHERE tp.itinerary.itineraryId = :itineraryId " +
+           "AND tp.visitOrder > :visitOrder " +
+           "ORDER BY tp.visitOrder ASC")
+    List<TripPlace> findSubsequentInItinerary(@Param("itineraryId") Long itineraryId,
+                                              @Param("visitOrder") int visitOrder);
+
+    /**
+     * [영향 계산] 동일 일차에서 특정 visitOrder 이전 장소 조회 (방문 순서 내림차순)
+     * get(0) 으로 바로 앞 장소 하나만 사용
+     */
+    @Query("SELECT tp FROM TripPlace tp " +
+           "WHERE tp.itinerary.itineraryId = :itineraryId " +
+           "AND tp.visitOrder < :visitOrder " +
+           "ORDER BY tp.visitOrder DESC")
+    List<TripPlace> findPrecedingInItinerary(@Param("itineraryId") Long itineraryId,
+                                             @Param("visitOrder") int visitOrder);
+
 }

@@ -118,6 +118,9 @@ google:
 weather:
   api-key: ${WEATHER_API_KEY:}
 
+ai-server:
+  base-url: ${AI_SERVER_URL:http://localhost:8000}
+
 logging:
   level:
     # 403 AuthorizationDeniedException이 Tomcat 컨테이너 로거에서 ERROR로 찍히는 현상 억제

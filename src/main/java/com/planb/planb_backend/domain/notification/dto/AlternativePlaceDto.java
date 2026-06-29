@@ -9,6 +9,8 @@ import lombok.Getter;
 public class AlternativePlaceDto {
 
     private Long   placeId;
+    /** Google Place ID — 프론트엔드 impact API 호출 및 교체 확정 시 사용 */
+    private String googlePlaceId;
     private String name;
     private String category;
     private String space;            // INDOOR / OUTDOOR / MIX
@@ -23,10 +25,14 @@ public class AlternativePlaceDto {
     private Integer priceLevel;      // 0(무료) ~ 4(매우 비쌈), null이면 정보 없음
     private String openingHours;     // JSONB 문자열 {"weekday_text": [...]}
     private String reviewData;       // JSONB 문자열 — 구글 리뷰 원본
+    /** 좌표 — 프론트엔드가 impact API 호출 시 newLatitude/newLongitude로 전달 */
+    private Double latitude;
+    private Double longitude;
 
     public static AlternativePlaceDto from(Place place) {
         return AlternativePlaceDto.builder()
                 .placeId(place.getId())
+                .googlePlaceId(place.getGooglePlaceId())  // 추가
                 .name(place.getName())
                 .category(place.getCategory())
                 .space(place.getSpace() != null ? place.getSpace().name() : null)
@@ -41,6 +47,8 @@ public class AlternativePlaceDto {
                 .priceLevel(place.getPriceLevel())
                 .openingHours(place.getOpeningHours())
                 .reviewData(place.getReviewData())
+                .latitude(place.getLatitude())            // 추가
+                .longitude(place.getLongitude())          // 추가
                 .build();
     }
 }

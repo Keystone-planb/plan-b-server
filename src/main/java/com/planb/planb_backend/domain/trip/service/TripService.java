@@ -2,7 +2,11 @@ package com.planb.planb_backend.domain.trip.service;
 
 import com.planb.planb_backend.domain.place.entity.Place;
 import com.planb.planb_backend.domain.place.repository.PlaceRepository;
+import com.planb.planb_backend.domain.place.service.external.GooglePlaceApiService;
 import com.planb.planb_backend.domain.place.service.external.PlaceAnalysisService;
+import com.planb.planb_backend.domain.recommendation.dto.AlternativeImpactRequest;
+import com.planb.planb_backend.domain.recommendation.dto.AlternativeImpactResponse;
+import com.planb.planb_backend.domain.recommendation.dto.UnifiedReplaceResponse;
 import com.planb.planb_backend.domain.trip.dto.*;
 import com.planb.planb_backend.domain.trip.entity.Itinerary;
 import com.planb.planb_backend.domain.trip.entity.PlaceSource;
@@ -21,11 +25,15 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDate;
 import java.time.LocalTime;
+import java.time.format.DateTimeFormatter;
 import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
+import java.util.concurrent.CompletableFuture;
 import java.util.stream.Collectors;
 
 @Slf4j
@@ -34,12 +42,15 @@ import java.util.stream.Collectors;
 @Transactional(readOnly = true)
 public class TripService {
 
+    private static final DateTimeFormatter TIME_FMT = DateTimeFormatter.ofPattern("HH:mm");
+
     private final TripRepository tripRepository;
     private final UserRepository userRepository;
     private final ItineraryRepository itineraryRepository;
     private final TripPlaceRepository tripPlaceRepository;
     private final PlaceRepository placeRepository;
     private final PlaceAnalysisService placeAnalysisService;
+    private final GooglePlaceApiService googlePlaceApiService;
 
     /**
      * POST /api/trips — 여행 계획 생성
@@ -113,7 +124,8 @@ public class TripService {
                         p.getLatitude(),
                         p.getLongitude(),
                         p.getCategory(),
-                        p.getType()
+                        p.getType(),
+                        p.getSpace() != null ? p.getSpace().name() : null  // space 추가 (AI 서버 recovery에서 사용)
                 ));
             });
         }
@@ -142,7 +154,8 @@ public class TripService {
         if (!placeIds.isEmpty()) {
             placeRepository.findAllByGooglePlaceIdIn(placeIds).forEach(p ->
                 placeInfoMap.put(p.getGooglePlaceId(), new TripDetailResponse.PlaceInfo(
-                        p.getLatitude(), p.getLongitude(), p.getCategory(), p.getType()
+                        p.getLatitude(), p.getLongitude(), p.getCategory(), p.getType(),
+                        p.getSpace() != null ? p.getSpace().name() : null
                 ))
             );
         }
@@ -270,14 +283,218 @@ public class TripService {
     }
 
     /**
-     * POST /api/plans/{planId}/replace — 일정 장소 PLAN B 대체
-     * placeId/name 교체, visitTime/endTime null 초기화, memo는 유지
+     * POST /api/plans/{planId}/replace — 일정 장소 PLAN B 대체 (통합 응답)
+     * - placeId/name 교체 (visitTime/endTime 원본 승계)
+     * - newLatitude/newLongitude 있으면 Distance Matrix로 이후 일정 시간 자동 재계산
+     * - 기존 코드 Zero Risk: 좌표 없으면 updatedSchedules 빈 리스트 반환 (기존 동작 동일)
      */
     @Transactional
-    public void replaceTripPlace(String email, Long tripPlaceId, String newGooglePlaceId, String newPlaceName) {
+    public UnifiedReplaceResponse replaceTripPlace(String email, Long tripPlaceId,
+            String newGooglePlaceId, String newPlaceName,
+            Double newLatitude, Double newLongitude) {
+
         TripPlace tripPlace = tripPlaceRepository.findByIdAndUserEmail(tripPlaceId, email)
                 .orElseThrow(() -> new IllegalArgumentException("일정을 찾을 수 없거나 접근 권한이 없습니다."));
+
+        // 기존 로직 유지 — 장소 교체
         tripPlace.replace(newGooglePlaceId, newPlaceName);
+
+        // 좌표 있으면 이후 일정 시간 재계산 (confirmOptimize 방식 재사용)
+        List<UnifiedReplaceResponse.UpdatedSchedule> updatedSchedules = new ArrayList<>();
+
+        if (newLatitude != null && newLongitude != null && tripPlace.getEndTime() != null) {
+            TransportMode tripMode = Optional.ofNullable(tripPlace.getItinerary().getTrip().getTransportMode())
+                    .orElse(TransportMode.WALK);
+
+            List<TripPlace> subsequent = tripPlaceRepository.findSubsequentInItinerary(
+                    tripPlace.getItinerary().getItineraryId(), tripPlace.getVisitOrder());
+
+            double prevLat     = newLatitude;
+            double prevLng     = newLongitude;
+            String prevEndTime = tripPlace.getEndTime();
+            TransportMode prevMode = Optional.ofNullable(tripPlace.getTransportMode()).orElse(tripMode);
+
+            for (TripPlace curr : subsequent) {
+                if (curr.getVisitTime() == null || curr.getEndTime() == null) break;
+
+                Place currPlace = placeRepository.findByGooglePlaceId(curr.getPlaceId()).orElse(null);
+                if (currPlace == null || currPlace.getLatitude() == null) break;
+
+                int travelMin = googlePlaceApiService.getTravelTimeMinutes(
+                        prevLat, prevLng,
+                        currPlace.getLatitude(), currPlace.getLongitude(),
+                        prevMode);
+
+                LocalTime origVisit  = LocalTime.parse(curr.getVisitTime());
+                LocalTime origEnd    = LocalTime.parse(curr.getEndTime());
+                long durationMin     = ChronoUnit.MINUTES.between(origVisit, origEnd);
+                if (durationMin <= 0) durationMin = 60;
+
+                LocalTime newVisit = LocalTime.parse(prevEndTime).plusMinutes(travelMin);
+                LocalTime newEnd   = newVisit.plusMinutes(durationMin);
+
+                String newVisitStr = newVisit.format(TIME_FMT);
+                String newEndStr   = newEnd.format(TIME_FMT);
+
+                curr.updateSchedule(newVisitStr, newEndStr, null, null);
+
+                updatedSchedules.add(UnifiedReplaceResponse.UpdatedSchedule.builder()
+                        .tripPlaceId(curr.getTripPlaceId())
+                        .name(curr.getName())
+                        .visitTime(newVisitStr)
+                        .endTime(newEndStr)
+                        .travelMinFromPrev(travelMin)
+                        .build());
+
+                prevLat     = currPlace.getLatitude();
+                prevLng     = currPlace.getLongitude();
+                prevEndTime = newEndStr;
+                prevMode    = Optional.ofNullable(curr.getTransportMode()).orElse(tripMode);
+            }
+        }
+
+        return UnifiedReplaceResponse.builder()
+                .tripPlaceId(tripPlaceId)
+                .newGooglePlaceId(newGooglePlaceId)
+                .newPlaceName(tripPlace.getName())   // replace() 후 "[장소명] (PLAN B)" 형식으로 저장됨
+                .visitTime(tripPlace.getVisitTime())
+                .endTime(tripPlace.getEndTime())
+                .updatedSchedules(updatedSchedules)
+                .build();
+    }
+
+    /**
+     * POST /api/plans/{tripPlaceId}/alternatives/impact — 대안 영향 미리보기
+     * 대안 장소로 교체했을 때 이전/다음 장소 이동시간 및 일정 밀림 시간 계산
+     * 프론트엔드 ReplaceConfirmSheet 타임라인 렌더링용
+     */
+    @Transactional(readOnly = true)
+    public AlternativeImpactResponse calculateAlternativeImpact(
+            String email, Long tripPlaceId, AlternativeImpactRequest request) {
+
+        TripPlace target = tripPlaceRepository.findByIdAndUserEmail(tripPlaceId, email)
+                .orElseThrow(() -> new IllegalArgumentException("일정을 찾을 수 없거나 접근 권한이 없습니다."));
+
+        // 좌표 없으면 계산 불가
+        if (request.getNewLatitude() == null || request.getNewLongitude() == null) {
+            return AlternativeImpactResponse.builder()
+                    .calcStatus("NO_COORD")
+                    .affectedCount(0)
+                    .dayShiftMin(0)
+                    .build();
+        }
+
+        Long itineraryId = target.getItinerary().getItineraryId();
+        TransportMode tripMode = Optional.ofNullable(target.getItinerary().getTrip().getTransportMode())
+                .orElse(TransportMode.WALK);
+
+        // 사용자가 선택한 이동수단 — 없으면 여행 기본값 사용 (확정 시 이 값으로 시간 재계산)
+        TransportMode selectedMode = (request.getSelectedMode() != null)
+                ? TransportMode.valueOf(request.getSelectedMode())
+                : tripMode;
+
+        // 이전/다음 장소 조회
+        List<TripPlace> preceding  = tripPlaceRepository.findPrecedingInItinerary(itineraryId, target.getVisitOrder());
+        List<TripPlace> subsequent = tripPlaceRepository.findSubsequentInItinerary(itineraryId, target.getVisitOrder());
+
+        TripPlace prevTp = preceding.isEmpty()  ? null : preceding.get(0);
+        TripPlace nextTp = subsequent.isEmpty() ? null : subsequent.get(0);
+
+        // 이전/다음 장소 DB 조회
+        Place prevPlace = (prevTp != null)
+                ? placeRepository.findByGooglePlaceId(prevTp.getPlaceId()).orElse(null) : null;
+        Place nextPlace = (nextTp != null)
+                ? placeRepository.findByGooglePlaceId(nextTp.getPlaceId()).orElse(null) : null;
+
+        boolean canCalcIn  = prevPlace != null && prevPlace.getLatitude() != null;
+        boolean canCalcOut = nextPlace != null && nextPlace.getLatitude() != null;
+
+        // ── 병렬 호출: 이전→대안, 대안→다음 두 구간을 동시에 계산 ──────────────
+        // 기존: 순차 6번 호출(최악 30초) → 변경: 2번 병렬 호출(최악 5초)
+        final double newLat = request.getNewLatitude();
+        final double newLng = request.getNewLongitude();
+
+        CompletableFuture<Map<TransportMode, Integer>> futureIn = canCalcIn
+                ? CompletableFuture.supplyAsync(() ->
+                        googlePlaceApiService.getAllTravelTimeMinutes(
+                                prevPlace.getLatitude(), prevPlace.getLongitude(), newLat, newLng))
+                : CompletableFuture.completedFuture(Map.of());
+
+        CompletableFuture<Map<TransportMode, Integer>> futureOut = canCalcOut
+                ? CompletableFuture.supplyAsync(() ->
+                        googlePlaceApiService.getAllTravelTimeMinutes(
+                                newLat, newLng,
+                                nextPlace.getLatitude(), nextPlace.getLongitude()))
+                : CompletableFuture.completedFuture(Map.of());
+
+        // 두 구간 모두 완료될 때까지 대기
+        CompletableFuture.allOf(futureIn, futureOut).join();
+
+        Map<TransportMode, Integer> allIn  = futureIn.join();
+        Map<TransportMode, Integer> allOut = futureOut.join();
+        // ──────────────────────────────────────────────────────────────────────
+
+        // travelIn 결과 조합
+        List<AlternativeImpactResponse.TravelOption> travelInOptions = allIn.entrySet().stream()
+                .map(e -> AlternativeImpactResponse.TravelOption.of(e.getKey().name(), e.getValue()))
+                .collect(Collectors.toList());
+
+        Integer travelInMin  = allIn.isEmpty() ? null : allIn.getOrDefault(selectedMode, allIn.values().iterator().next());
+        String  travelInMode = allIn.isEmpty() ? null : selectedMode.name();
+
+        // travelOut 결과 조합
+        List<AlternativeImpactResponse.TravelOption> travelOutOptions = allOut.entrySet().stream()
+                .map(e -> AlternativeImpactResponse.TravelOption.of(e.getKey().name(), e.getValue()))
+                .collect(Collectors.toList());
+
+        Integer travelOutMin  = allOut.isEmpty() ? null : allOut.getOrDefault(selectedMode, allOut.values().iterator().next());
+        String  travelOutMode = allOut.isEmpty() ? null : selectedMode.name();
+
+        // 교체 후 다음 장소 예상 시작 시간 (선택된 이동수단 기준)
+        String nextNewVisitTime = null;
+        if (travelOutMin != null && target.getEndTime() != null) {
+            LocalTime newStart = LocalTime.parse(target.getEndTime()).plusMinutes(travelOutMin);
+            nextNewVisitTime = newStart.format(TIME_FMT);
+        }
+
+        // dayShiftMin: 기존 방문 시간 vs 교체 후 예상 방문 시간 차이
+        int dayShiftMin = 0;
+        if (nextTp != null && nextTp.getVisitTime() != null && nextNewVisitTime != null) {
+            LocalTime origVisit = LocalTime.parse(nextTp.getVisitTime());
+            LocalTime newVisit  = LocalTime.parse(nextNewVisitTime);
+            dayShiftMin = (int) ChronoUnit.MINUTES.between(origVisit, newVisit);
+        }
+
+        AlternativeImpactResponse.PlaceSnapshot prevSnapshot = prevTp == null ? null :
+                AlternativeImpactResponse.PlaceSnapshot.builder()
+                        .tripPlaceId(prevTp.getTripPlaceId())
+                        .name(prevTp.getName())
+                        .visitTime(prevTp.getVisitTime())
+                        .endTime(prevTp.getEndTime())
+                        .build();
+
+        AlternativeImpactResponse.PlaceSnapshot nextSnapshot = nextTp == null ? null :
+                AlternativeImpactResponse.PlaceSnapshot.builder()
+                        .tripPlaceId(nextTp.getTripPlaceId())
+                        .name(nextTp.getName())
+                        .visitTime(nextTp.getVisitTime())
+                        .endTime(nextTp.getEndTime())
+                        .newVisitTime(nextNewVisitTime)
+                        .build();
+
+        return AlternativeImpactResponse.builder()
+                .calcStatus("OK")
+                .travelInOptions(travelInOptions)
+                .travelOutOptions(travelOutOptions)
+                .travelInMin(travelInMin)
+                .travelInMode(travelInMode)
+                .travelOutMin(travelOutMin)
+                .travelOutMode(travelOutMode)
+                .prevPlace(prevSnapshot)
+                .nextPlace(nextSnapshot)
+                .dayShiftMin(dayShiftMin)
+                .affectedCount(subsequent.size())
+                .build();
     }
 
     /**
@@ -371,6 +588,223 @@ public class TripService {
 
     /**
      * 시간대 겹침 검증
+    /**
+     * POST /api/trips/{tripId}/days/{day}/places/{tripPlaceId}/optimize/confirm
+     * 사용자가 대안 장소를 선택했을 때 TripPlace 교체 + 이후 장소 시간 일괄 업데이트.
+     *
+     * affectedTimes가 없으면 Google Distance Matrix API로 실제 이동시간을 계산해
+     * 뒤 일정 시간을 자동으로 재계산한다 (장소 교체 시에만 실제 API 호출).
+     */
+    @Transactional
+    public OptimizeConfirmResponse confirmOptimize(String email, Long tripPlaceId, OptimizeConfirmRequest request) {
+        // 1. 교체 대상 TripPlace 조회 (소유자 검증 포함)
+        TripPlace target = tripPlaceRepository.findByIdAndUserEmail(tripPlaceId, email)
+                .orElseThrow(() -> new IllegalArgumentException("일정을 찾을 수 없거나 접근 권한이 없습니다."));
+
+        // 2. 대상 장소 placeId · name 교체
+        target.replace(request.getNewPlaceId(), request.getNewName());
+
+        // 3. Place 테이블에 새 장소 좌표·카테고리 upsert
+        Place place = placeRepository.findByGooglePlaceId(request.getNewPlaceId())
+                .orElseGet(() -> {
+                    Place p = new Place();
+                    p.setGooglePlaceId(request.getNewPlaceId());
+                    p.setName(request.getNewName());
+                    return p;
+                });
+        place.setLatitude(request.getNewLatitude());
+        place.setLongitude(request.getNewLongitude());
+        if (request.getNewCategory() != null) place.setCategory(request.getNewCategory());
+        placeRepository.save(place);
+
+        // 4. 이후 장소 시간 업데이트
+        //    affectedTimes가 있으면 프론트 계산값 적용 (하위 호환)
+        //    없으면 Distance Matrix API로 백엔드가 직접 계산
+        List<OptimizeConfirmResponse.UpdatedScheduleItem> updatedSchedules;
+
+        if (request.getAffectedTimes() != null && !request.getAffectedTimes().isEmpty()) {
+            updatedSchedules = applyAffectedTimes(request.getAffectedTimes());
+        } else {
+            updatedSchedules = recalculateByDistanceMatrix(target, request);
+        }
+
+        log.info("[OptimizeConfirm] tripPlaceId={} → newPlaceId={} newName={} 교체 완료, 영향 장소={}개",
+                tripPlaceId, request.getNewPlaceId(), request.getNewName(), updatedSchedules.size());
+
+        return OptimizeConfirmResponse.builder()
+                .message("장소 교체 완료")
+                .updatedSchedules(updatedSchedules)
+                .build();
+    }
+
+    /** affectedTimes 프론트 계산값 그대로 적용 (하위 호환) */
+    private List<OptimizeConfirmResponse.UpdatedScheduleItem> applyAffectedTimes(
+            List<OptimizeConfirmRequest.AffectedTimeItem> affectedTimes) {
+
+        Map<Long, OptimizeConfirmRequest.AffectedTimeItem> timeMap = new HashMap<>();
+        for (OptimizeConfirmRequest.AffectedTimeItem item : affectedTimes) {
+            timeMap.put(item.getTripPlaceId(), item);
+        }
+
+        List<Long> ids = affectedTimes.stream()
+                .map(OptimizeConfirmRequest.AffectedTimeItem::getTripPlaceId)
+                .collect(Collectors.toList());
+
+        List<OptimizeConfirmResponse.UpdatedScheduleItem> result = new ArrayList<>();
+        for (TripPlace tp : tripPlaceRepository.findAllById(ids)) {
+            OptimizeConfirmRequest.AffectedTimeItem item = timeMap.get(tp.getTripPlaceId());
+            if (item != null) {
+                tp.updateSchedule(item.getNewVisitTime(), item.getNewEndTime(), null, null);
+                result.add(OptimizeConfirmResponse.UpdatedScheduleItem.builder()
+                        .tripPlaceId(tp.getTripPlaceId())
+                        .name(tp.getName())
+                        .visitTime(item.getNewVisitTime())
+                        .endTime(item.getNewEndTime())
+                        .travelMinFromPrev(0)
+                        .build());
+            }
+        }
+        return result;
+    }
+
+    /**
+     * Google Distance Matrix API로 실제 이동시간을 계산해 뒤 일정 시간 재계산.
+     * 교체된 장소 위치에서 출발해 visitOrder 오름차순으로 각 구간을 순차 처리한다.
+     */
+    private List<OptimizeConfirmResponse.UpdatedScheduleItem> recalculateByDistanceMatrix(
+            TripPlace target, OptimizeConfirmRequest request) {
+
+        if (target.getEndTime() == null) {
+            log.info("[OptimizeConfirm] 교체 장소 endTime 없음 → 시간 재계산 생략");
+            return Collections.emptyList();
+        }
+
+        List<TripPlace> subsequentPlaces = tripPlaceRepository.findSubsequentInItinerary(
+                target.getItinerary().getItineraryId(), target.getVisitOrder());
+
+        if (subsequentPlaces.isEmpty()) return Collections.emptyList();
+
+        // Trip 기본 이동수단 (구간별 설정이 없을 때 폴백용)
+        TransportMode tripMode = target.getItinerary().getTrip().getTransportMode();
+        if (tripMode == null) tripMode = TransportMode.WALK;
+
+        List<OptimizeConfirmResponse.UpdatedScheduleItem> result = new ArrayList<>();
+
+        double prevLat     = request.getNewLatitude();
+        double prevLng     = request.getNewLongitude();
+        String prevEndTime = target.getEndTime();
+        // 교체된 장소의 구간 이동수단 (없으면 Trip 기본값)
+        TransportMode prevMode = target.getTransportMode() != null ? target.getTransportMode() : tripMode;
+
+        for (TripPlace curr : subsequentPlaces) {
+            if (curr.getVisitTime() == null || curr.getEndTime() == null) {
+                log.info("[OptimizeConfirm] tripPlaceId={} 시간 미설정 → 이후 재계산 중단", curr.getTripPlaceId());
+                break;
+            }
+
+            Place currPlace = placeRepository.findByGooglePlaceId(curr.getPlaceId()).orElse(null);
+            if (currPlace == null || currPlace.getLatitude() == null) {
+                log.warn("[OptimizeConfirm] tripPlaceId={} 좌표 없음 → 이후 재계산 중단", curr.getTripPlaceId());
+                break;
+            }
+
+            // 구간별 이동수단: 이전 장소에 설정된 값 우선, 없으면 Trip 기본값
+            // (TripPlace.transportMode = 이 장소 → 다음 장소 이동수단)
+            int travelMin = googlePlaceApiService.getTravelTimeMinutes(
+                    prevLat, prevLng,
+                    currPlace.getLatitude(), currPlace.getLongitude(),
+                    prevMode);
+
+            // 기존 체류시간 유지
+            LocalTime origVisit = LocalTime.parse(curr.getVisitTime());
+            LocalTime origEnd   = LocalTime.parse(curr.getEndTime());
+            long durationMin    = ChronoUnit.MINUTES.between(origVisit, origEnd);
+            if (durationMin <= 0) durationMin = 60;
+
+            LocalTime newVisit = LocalTime.parse(prevEndTime).plusMinutes(travelMin);
+            LocalTime newEnd   = newVisit.plusMinutes(durationMin);
+
+            String newVisitStr = newVisit.format(TIME_FMT);
+            String newEndStr   = newEnd.format(TIME_FMT);
+
+            curr.updateSchedule(newVisitStr, newEndStr, null, null);
+
+            result.add(OptimizeConfirmResponse.UpdatedScheduleItem.builder()
+                    .tripPlaceId(curr.getTripPlaceId())
+                    .name(curr.getName())
+                    .visitTime(newVisitStr)
+                    .endTime(newEndStr)
+                    .travelMinFromPrev(travelMin)
+                    .build());
+
+            prevLat     = currPlace.getLatitude();
+            prevLng     = currPlace.getLongitude();
+            prevEndTime = newEndStr;
+            // 다음 구간 이동수단: 현재 장소에 설정된 값 우선, 없으면 Trip 기본값
+            prevMode = curr.getTransportMode() != null ? curr.getTransportMode() : tripMode;
+        }
+
+        return result;
+    }
+
+    /**
+     * POST /api/trips/{tripId}/days/{day}/recovery/confirm
+     * AI 서버가 계산한 장소·시간을 사용자가 확정할 때 DB에 일괄 저장.
+     * 시간 계산은 AI 서버(Distance Matrix + 구간별 이동수단)가 담당하며,
+     * 백엔드는 그 결과를 그대로 저장한다.
+     */
+    @Transactional
+    public void confirmRecovery(String email, Long tripId, int day, RecoveryConfirmRequest request) {
+        // 1. 소유자 검증
+        User user = findUser(email);
+        Trip trip = findTripByOwner(tripId, user);
+
+        // 2. 해당 일차 조회
+        Itinerary itinerary = itineraryRepository.findByTripAndDay(trip, day)
+                .orElseThrow(() -> new IllegalArgumentException(day + "일차 일정을 찾을 수 없습니다."));
+
+        // 3. 해당 일차 TripPlace를 Map으로 인덱싱
+        Map<Long, TripPlace> placeMap = new HashMap<>();
+        for (TripPlace tp : itinerary.getPlaces()) {
+            placeMap.put(tp.getTripPlaceId(), tp);
+        }
+
+        int changedCount = 0;
+        for (RecoveryConfirmRequest.PlaceItem item : request.getPlaces()) {
+            TripPlace tp = placeMap.get(item.getTripPlaceId());
+            if (tp == null) continue;
+
+            boolean placeChanged = item.getPlaceId() != null && !item.getPlaceId().equals(tp.getPlaceId());
+
+            // 4. 장소가 교체된 경우: placeId·name 업데이트 + Place 테이블 upsert
+            if (placeChanged) {
+                tp.replace(item.getPlaceId(), item.getName());
+
+                if (item.getLatitude() != null && item.getLongitude() != null) {
+                    Place place = placeRepository.findByGooglePlaceId(item.getPlaceId())
+                            .orElseGet(() -> {
+                                Place p = new Place();
+                                p.setGooglePlaceId(item.getPlaceId());
+                                p.setName(item.getName());
+                                return p;
+                            });
+                    place.setLatitude(item.getLatitude());
+                    place.setLongitude(item.getLongitude());
+                    if (item.getCategory() != null) place.setCategory(item.getCategory());
+                    placeRepository.save(place);
+                }
+                changedCount++;
+            }
+
+            // 5. 시간 업데이트 (AI 서버가 계산한 visitTime/endTime 그대로 저장)
+            tp.updateSchedule(item.getVisitTime(), item.getEndTime(), null, null);
+        }
+
+        log.info("[RecoveryConfirm] tripId={} day={} 장소 교체={}개 시간 업데이트={}개",
+                tripId, day, changedCount, request.getPlaces().size());
+    }
+
+    /**
      * - visitTime 또는 endTime 중 하나라도 null이면 스킵 (시간 미설정 허용)
      * - excludeTripPlaceId: 자기 자신 수정 시 자신을 비교 대상에서 제외
      * - 겹침 조건: newStart < existEnd AND existStart < newEnd

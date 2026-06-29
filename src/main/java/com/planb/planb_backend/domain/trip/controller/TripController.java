@@ -119,4 +119,37 @@ public class TripController {
         tripService.updateTransportMode(authentication.getName(), id, mode);
         return ResponseEntity.noContent().build();
     }
+
+    @Operation(
+            summary = "현지 복구 확정",
+            description = "틈새·날씨·대안 추천으로 AI가 제안한 장소·시간을 확정합니다. " +
+                          "시간 계산은 AI 서버(Distance Matrix + 구간별 이동수단)가 담당하며, " +
+                          "백엔드는 AI 서버가 계산한 결과를 그대로 저장합니다."
+    )
+    @PostMapping("/{tripId}/days/{day}/recovery/confirm")
+    public ResponseEntity<Void> confirmRecovery(
+            @PathVariable Long tripId,
+            @PathVariable Integer day,
+            @Valid @RequestBody RecoveryConfirmRequest request,
+            Authentication authentication) {
+        tripService.confirmRecovery(authentication.getName(), tripId, day, request);
+        return ResponseEntity.noContent().build();
+    }
+
+    @Operation(
+            summary = "대안 장소 선택 확정",
+            description = "AI 동선 최적화에서 사용자가 선택한 대안 장소를 확정합니다. " +
+                          "교체 대상 장소의 placeId·name을 변경하고, Google Distance Matrix API로 " +
+                          "실제 이동시간을 계산해 이후 장소들의 방문 시간을 자동으로 재계산합니다."
+    )
+    @PostMapping("/{tripId}/days/{day}/places/{tripPlaceId}/optimize/confirm")
+    public ResponseEntity<OptimizeConfirmResponse> confirmOptimize(
+            @PathVariable Long tripId,
+            @PathVariable Integer day,
+            @PathVariable Long tripPlaceId,
+            @Valid @RequestBody OptimizeConfirmRequest request,
+            Authentication authentication) {
+        OptimizeConfirmResponse response = tripService.confirmOptimize(authentication.getName(), tripPlaceId, request);
+        return ResponseEntity.ok(response);
+    }
 }
