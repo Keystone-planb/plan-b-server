@@ -18,4 +18,10 @@ public class ReplaceRequest {
 
     /** 새 장소 경도 (optional) — 있으면 이후 일정 시간 자동 재계산 */
     private Double newLongitude;
+
+    /** 새 방문 시작 시간 (optional, HH:mm) — 있으면 시간대 검증 후 장소 교체와 함께 원자적으로 저장 */
+    private String visitTime;
+
+    /** 새 방문 종료 시간 (optional, HH:mm) */
+    private String endTime;
 }

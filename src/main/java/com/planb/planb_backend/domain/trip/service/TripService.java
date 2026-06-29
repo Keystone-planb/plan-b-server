@@ -284,20 +284,32 @@ public class TripService {
 
     /**
      * POST /api/plans/{planId}/replace — 일정 장소 PLAN B 대체 (통합 응답)
-     * - placeId/name 교체 (visitTime/endTime 원본 승계)
+     * - visitTime/endTime 있으면 시간대 검증 먼저 수행 → 실패 시 IllegalArgumentException으로 롤백
+     * - 검증 통과 후 placeId/name 교체 + 방문 시간 변경을 하나의 트랜잭션으로 원자적 처리
      * - newLatitude/newLongitude 있으면 Distance Matrix로 이후 일정 시간 자동 재계산
      * - 기존 코드 Zero Risk: 좌표 없으면 updatedSchedules 빈 리스트 반환 (기존 동작 동일)
      */
     @Transactional
     public UnifiedReplaceResponse replaceTripPlace(String email, Long tripPlaceId,
             String newGooglePlaceId, String newPlaceName,
-            Double newLatitude, Double newLongitude) {
+            Double newLatitude, Double newLongitude,
+            String visitTime, String endTime) {
 
         TripPlace tripPlace = tripPlaceRepository.findByIdAndUserEmail(tripPlaceId, email)
                 .orElseThrow(() -> new IllegalArgumentException("일정을 찾을 수 없거나 접근 권한이 없습니다."));
 
-        // 기존 로직 유지 — 장소 교체
+        // 시간 검증 먼저 — 실패 시 IllegalArgumentException 발생 → 트랜잭션 롤백 (장소 교체도 반영 안 됨)
+        if (visitTime != null || endTime != null) {
+            validateTimeOverlap(tripPlace.getItinerary(), visitTime, endTime, tripPlaceId);
+        }
+
+        // 장소 교체
         tripPlace.replace(newGooglePlaceId, newPlaceName);
+
+        // 방문 시간 변경 (장소 교체와 같은 트랜잭션)
+        if (visitTime != null) {
+            tripPlace.updateSchedule(visitTime, endTime, null, null);
+        }
 
         // 좌표 있으면 이후 일정 시간 재계산 (confirmOptimize 방식 재사용)
         List<UnifiedReplaceResponse.UpdatedSchedule> updatedSchedules = new ArrayList<>();
@@ -816,7 +828,7 @@ public class TripService {
         LocalTime newEnd   = LocalTime.parse(endTime);
 
         if (!newEnd.isAfter(newStart)) {
-            throw new IllegalArgumentException("종료 시간(" + endTime + ")은 시작 시간(" + visitTime + ")보다 늦어야 합니다.");
+            throw new IllegalStateException("종료 시간(" + endTime + ")은 시작 시간(" + visitTime + ")보다 늦어야 합니다.");
         }
 
         for (TripPlace existing : itinerary.getPlaces()) {
@@ -827,7 +839,7 @@ public class TripService {
             LocalTime existEnd   = LocalTime.parse(existing.getEndTime());
 
             if (newStart.isBefore(existEnd) && existStart.isBefore(newEnd)) {
-                throw new IllegalArgumentException(
+                throw new IllegalStateException(
                     String.format("'%s'의 시간대(%s ~ %s)와 겹칩니다. 다른 시간대를 선택해주세요.",
                         existing.getName(), existing.getVisitTime(), existing.getEndTime())
                 );

@@ -201,7 +201,9 @@ public class RecommendationController {
                 request.getNewGooglePlaceId(),
                 request.getNewPlaceName(),
                 request.getNewLatitude(),
-                request.getNewLongitude()
+                request.getNewLongitude(),
+                request.getVisitTime(),
+                request.getEndTime()
         );
 
         return ResponseEntity.ok(response);
