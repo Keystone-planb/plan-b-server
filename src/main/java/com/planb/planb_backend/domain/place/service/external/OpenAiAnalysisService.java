@@ -139,12 +139,14 @@ public class OpenAiAnalysisService {
                     ))
                     .retrieve()
                     .bodyToMono(Map.class)
-                    // [재시도] ECONNRESET 발생 시 최대 2회 즉시 재시도 (안전망)
-                    // ECONNRESET은 즉각 실패라 재시도 오버헤드 거의 없음
-                    .retryWhen(Retry.max(2)
-                            .filter(e -> e.getMessage() != null
-                                    && e.getMessage().contains("Connection reset")))
-                    .block(Duration.ofSeconds(30)); // 재시도 포함 여유 있게 30초
+                    // [재시도] ECONNRESET(연결 끊김) + 429(Rate Limit 초과) 모두 대응
+                    // backoff: 첫 재시도 1초 → 2초 → 4초 간격 (합계 7초)
+                    // SSE orTimeout(30s) 내에서 재시도 + 응답(20초) 여유분 확보
+                    .retryWhen(Retry.backoff(3, Duration.ofSeconds(1))
+                            .filter(e -> e.getMessage() != null && (
+                                    e.getMessage().contains("Connection reset") ||
+                                    e.getMessage().contains("429"))))
+                    .block(Duration.ofSeconds(20)); // OpenAI 단일 응답 타임아웃 (재시도 7초 + 응답 20초 = 27초 < orTimeout 30초)
 
             if (response != null && response.containsKey("choices")) {
                 List<Map<String, Object>> choices = (List<Map<String, Object>>) response.get("choices");
