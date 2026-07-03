@@ -24,4 +24,7 @@ public class ReplaceRequest {
 
     /** 새 방문 종료 시간 (optional, HH:mm) */
     private String endTime;
+
+    /** 새 장소 카테고리 (optional) — 있으면 places 테이블 category가 null인 경우 저장 */
+    private String newCategory;
 }

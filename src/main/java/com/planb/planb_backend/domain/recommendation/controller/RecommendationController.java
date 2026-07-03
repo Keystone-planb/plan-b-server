@@ -203,7 +203,8 @@ public class RecommendationController {
                 request.getNewLatitude(),
                 request.getNewLongitude(),
                 request.getVisitTime(),
-                request.getEndTime()
+                request.getEndTime(),
+                request.getNewCategory()
         );
 
         return ResponseEntity.ok(response);

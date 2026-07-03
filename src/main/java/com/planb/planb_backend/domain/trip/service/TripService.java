@@ -293,12 +293,12 @@ public class TripService {
     public UnifiedReplaceResponse replaceTripPlace(String email, Long tripPlaceId,
             String newGooglePlaceId, String newPlaceName,
             Double newLatitude, Double newLongitude,
-            String visitTime, String endTime) {
+            String visitTime, String endTime, String newCategory) {
 
         TripPlace tripPlace = tripPlaceRepository.findByIdAndUserEmail(tripPlaceId, email)
                 .orElseThrow(() -> new IllegalArgumentException("일정을 찾을 수 없거나 접근 권한이 없습니다."));
 
-        // 시간 검증 먼저 — 실패 시 IllegalArgumentException 발생 → 트랜잭션 롤백 (장소 교체도 반영 안 됨)
+        // 시간 검증 먼저 — 실패 시 IllegalStateException 발생 → 트랜잭션 롤백 (장소 교체도 반영 안 됨)
         if (visitTime != null || endTime != null) {
             validateTimeOverlap(tripPlace.getItinerary(), visitTime, endTime, tripPlaceId);
         }
@@ -309,6 +309,20 @@ public class TripService {
         // 방문 시간 변경 (장소 교체와 같은 트랜잭션)
         if (visitTime != null) {
             tripPlace.updateSchedule(visitTime, endTime, null, null);
+        }
+
+        // category 보존 — places 테이블에 해당 장소가 없거나 category가 null인 경우에만 저장
+        // AI 분석이 완료된 장소는 건드리지 않음
+        if (newCategory != null && !newCategory.isBlank()) {
+            try {
+                Place newPlace = placeRepository.findByGooglePlaceId(newGooglePlaceId).orElse(null);
+                if (newPlace != null && newPlace.getCategory() == null) {
+                    newPlace.setCategory(newCategory);
+                    placeRepository.save(newPlace);
+                }
+            } catch (Exception e) {
+                log.warn("[replace] category 저장 실패 (googlePlaceId={}): {}", newGooglePlaceId, e.getMessage());
+            }
         }
 
         // 좌표 있으면 이후 일정 시간 재계산 (confirmOptimize 방식 재사용)
