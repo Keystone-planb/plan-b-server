@@ -1,11 +1,13 @@
 package com.planb.planb_backend.domain.notification.service;
 
+import jakarta.annotation.PostConstruct;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.MediaType;
 import org.springframework.stereotype.Service;
 import org.springframework.web.reactive.function.client.WebClient;
 
+import java.time.Duration;
 import java.util.Map;
 
 /**
@@ -23,8 +25,15 @@ import java.util.Map;
 public class ExpoPushService {
 
     private static final String EXPO_PUSH_URL = "https://exp.host/--/api/v2/push/send";
+    private static final Duration PUSH_TIMEOUT = Duration.ofSeconds(10);
 
     private final WebClient.Builder webClientBuilder;
+    private WebClient webClient;
+
+    @PostConstruct
+    public void init() {
+        this.webClient = webClientBuilder.build();
+    }
 
     /**
      * Expo Push 알림 발송.
@@ -48,14 +57,13 @@ public class ExpoPushService {
         );
 
         try {
-            WebClient webClient = webClientBuilder.build();
             String response = webClient.post()
                     .uri(EXPO_PUSH_URL)
                     .contentType(MediaType.APPLICATION_JSON)
                     .bodyValue(payload)
                     .retrieve()
                     .bodyToMono(String.class)
-                    .block();
+                    .block(PUSH_TIMEOUT);
 
             log.info("[ExpoPush] 발송 완료 — token={}, response={}", expoPushToken, response);
         } catch (Exception e) {
