@@ -11,6 +11,14 @@ let allPlaces        = [];
 let allNotifications = [];
 let allBookmarks     = [];
 
+const PAGE_SIZE = 50;
+const pagination = {
+  users:         { current: 0, totalPages: 0, totalElements: 0 },
+  places:        { current: 0, totalPages: 0, totalElements: 0 },
+  notifications: { current: 0, totalPages: 0, totalElements: 0 },
+  bookmarks:     { current: 0, totalPages: 0, totalElements: 0 },
+};
+
 let currentUserId    = null;
 let currentTripId    = null;
 let currentTripTitle = null;
@@ -222,14 +230,26 @@ function switchTab(name) {
 // ════════════════════════════════════════════════════════════════════════════
 // ── 사용자 관리
 // ════════════════════════════════════════════════════════════════════════════
-async function loadUsers() {
+async function loadUsers(page = 0) {
   show('users-loading'); hide('users-table-wrap'); hide('users-empty');
   try {
-    allUsers = await apiFetch('/api/admin/users');
+    const data = await apiFetch(`/api/admin/users?page=${page}&size=${PAGE_SIZE}`);
+    allUsers = data.content;
+    pagination.users.current       = data.currentPage;
+    pagination.users.totalPages    = data.totalPages;
+    pagination.users.totalElements = data.totalElements;
     renderUsersTable(allUsers);
+    updatePagination('users', 'users', '명');
   } catch (ex) {
     document.getElementById('users-loading').textContent = '불러오기 실패: ' + ex.message;
   }
+}
+
+function goUsersPage(delta) {
+  const p = pagination.users;
+  const next = p.current + delta;
+  if (next < 0 || next >= p.totalPages) return;
+  loadUsers(next);
 }
 
 function applyUserFilter() {
@@ -278,8 +298,10 @@ function renderUsersTable(users) {
       </td>
     </tr>`).join('');
 
-  document.getElementById('users-count').textContent =
-    `총 ${users.length}명 (전체 ${allUsers.length}명)`;
+  const q = (document.getElementById('user-search').value || '').toLowerCase();
+  document.getElementById('users-count').textContent = q
+    ? `검색 결과 ${users.length}명 / 페이지 ${allUsers.length}명 (전체 ${pagination.users.totalElements.toLocaleString()}명)`
+    : `${allUsers.length}명 표시 중 (전체 ${pagination.users.totalElements.toLocaleString()}명)`;
 }
 
 async function deleteUser(userId, email) {
@@ -624,15 +646,27 @@ async function loadUserMoodBadges(userId) {
 // ════════════════════════════════════════════════════════════════════════════
 // ── 알림 관제 탭
 // ════════════════════════════════════════════════════════════════════════════
-async function loadNotifications() {
+async function loadNotifications(page = 0) {
   show('n-loading'); hide('n-table-wrap'); hide('n-empty');
   try {
-    allNotifications = await apiFetch('/api/admin/notifications');
+    const data = await apiFetch(`/api/admin/notifications?page=${page}&size=${PAGE_SIZE}`);
+    allNotifications = data.content;
+    pagination.notifications.current       = data.currentPage;
+    pagination.notifications.totalPages    = data.totalPages;
+    pagination.notifications.totalElements = data.totalElements;
     updateNotificationStats(allNotifications);
     applyNotificationFilter();
+    updatePagination('notifications', 'n', '건');
   } catch (ex) {
     document.getElementById('n-loading').textContent = '불러오기 실패: ' + ex.message;
   }
+}
+
+function goNotificationsPage(delta) {
+  const p = pagination.notifications;
+  const next = p.current + delta;
+  if (next < 0 || next >= p.totalPages) return;
+  loadNotifications(next);
 }
 
 function applyNotificationFilter() {
@@ -650,8 +684,11 @@ function applyNotificationFilter() {
     ].some(v => v.includes(q)))
   );
   renderNotificationsTable(f);
-  document.getElementById('n-count').textContent =
-    `총 ${f.length}건 (전체 ${allNotifications.length}건)`;
+  const nq = (document.getElementById('n-search').value || '').toLowerCase();
+  const nf = document.getElementById('n-filter-push').value;
+  document.getElementById('n-count').textContent = (nq || nf)
+    ? `검색 결과 ${f.length}건 / 페이지 ${allNotifications.length}건 (전체 ${pagination.notifications.totalElements.toLocaleString()}건)`
+    : `${allNotifications.length}건 표시 중 (전체 ${pagination.notifications.totalElements.toLocaleString()}건)`;
 }
 
 function updateNotificationStats(list) {
@@ -761,17 +798,29 @@ async function resendNotification(notificationId) {
 // ════════════════════════════════════════════════════════════════════════════
 // ── 장소 관리 탭 (DB Places)
 // ════════════════════════════════════════════════════════════════════════════
-async function loadDbPlaces() {
+async function loadDbPlaces(page = 0) {
   show('p-loading'); hide('p-table-wrap'); hide('p-empty');
   placesSortCol = 'id';
   placesSortDir = 'asc';
   try {
-    allPlaces = await apiFetch('/api/admin/places');
+    const data = await apiFetch(`/api/admin/places?page=${page}&size=${PAGE_SIZE}`);
+    allPlaces = data.content;
+    pagination.places.current       = data.currentPage;
+    pagination.places.totalPages    = data.totalPages;
+    pagination.places.totalElements = data.totalElements;
     updatePlaceStats(allPlaces);
     applyPlaceFilter();
+    updatePagination('places', 'p', '개');
   } catch (ex) {
     document.getElementById('p-loading').textContent = '불러오기 실패: ' + ex.message;
   }
+}
+
+function goPlacesPage(delta) {
+  const p = pagination.places;
+  const next = p.current + delta;
+  if (next < 0 || next >= p.totalPages) return;
+  loadDbPlaces(next);
 }
 
 function applyPlaceFilter() {
@@ -784,7 +833,12 @@ function applyPlaceFilter() {
     (!type   || p.type === type)
   );
   renderSortedDbPlaces(f);
-  document.getElementById('p-count').textContent = `총 ${f.length}개 (전체 ${allPlaces.length}개)`;
+  const pq = (document.getElementById('p-search').value || '').toLowerCase();
+  const ps = document.getElementById('p-filter-status').value;
+  const pt = document.getElementById('p-filter-type').value;
+  document.getElementById('p-count').textContent = (pq || ps || pt)
+    ? `검색 결과 ${f.length}개 / 페이지 ${allPlaces.length}개 (전체 ${pagination.places.totalElements.toLocaleString()}개)`
+    : `${allPlaces.length}개 표시 중 (전체 ${pagination.places.totalElements.toLocaleString()}개)`;
 }
 
 function updatePlaceStats(places) {
@@ -995,14 +1049,26 @@ function showPlaceJsonDetail(sid, field, label) {
 // ════════════════════════════════════════════════════════════════════════════
 // ── 즐겨찾기 관리 탭
 // ════════════════════════════════════════════════════════════════════════════
-async function loadBookmarks() {
+async function loadBookmarks(page = 0) {
   show('bm-loading'); hide('bm-table-wrap'); hide('bm-empty');
   try {
-    allBookmarks = await apiFetch('/api/admin/bookmarks');
+    const data = await apiFetch(`/api/admin/bookmarks?page=${page}&size=${PAGE_SIZE}`);
+    allBookmarks = data.content;
+    pagination.bookmarks.current       = data.currentPage;
+    pagination.bookmarks.totalPages    = data.totalPages;
+    pagination.bookmarks.totalElements = data.totalElements;
     applyBookmarkFilter();
+    updatePagination('bookmarks', 'bm', '개');
   } catch (ex) {
     document.getElementById('bm-loading').textContent = '불러오기 실패: ' + ex.message;
   }
+}
+
+function goBookmarksPage(delta) {
+  const p = pagination.bookmarks;
+  const next = p.current + delta;
+  if (next < 0 || next >= p.totalPages) return;
+  loadBookmarks(next);
 }
 
 function applyBookmarkFilter() {
@@ -1015,7 +1081,10 @@ function applyBookmarkFilter() {
     (b.category   || '').toLowerCase().includes(q)
   );
   renderBookmarksTable(f);
-  document.getElementById('bm-count').textContent = `총 ${f.length}개 (전체 ${allBookmarks.length}개)`;
+  const bmq = (document.getElementById('bm-search').value || '').toLowerCase();
+  document.getElementById('bm-count').textContent = bmq
+    ? `검색 결과 ${f.length}개 / 페이지 ${allBookmarks.length}개 (전체 ${pagination.bookmarks.totalElements.toLocaleString()}개)`
+    : `${allBookmarks.length}개 표시 중 (전체 ${pagination.bookmarks.totalElements.toLocaleString()}개)`;
 }
 
 function renderBookmarksTable(list) {
@@ -1068,6 +1137,23 @@ async function deleteBookmark(bookmarkId, name) {
     applyBookmarkFilter();
     loadStats();
   } catch (ex) { alert('삭제 실패: ' + ex.message); }
+}
+
+// ════════════════════════════════════════════════════════════════════════════
+// 페이지네이션 공통
+// ════════════════════════════════════════════════════════════════════════════
+function updatePagination(tab, prefix, unit) {
+  const p       = pagination[tab];
+  const pEl     = document.getElementById(`${prefix}-pagination`);
+  const infoEl  = document.getElementById(`${prefix}-page-info`);
+  const prevEl  = document.getElementById(`${prefix}-prev-btn`);
+  const nextEl  = document.getElementById(`${prefix}-next-btn`);
+  if (!pEl) return;
+  if (p.totalPages <= 1) { pEl.classList.add('hidden'); return; }
+  pEl.classList.remove('hidden');
+  infoEl.textContent = `${p.current + 1} / ${p.totalPages} 페이지  (전체 ${p.totalElements.toLocaleString()}${unit})`;
+  prevEl.disabled = p.current === 0;
+  nextEl.disabled = p.current >= p.totalPages - 1;
 }
 
 // ════════════════════════════════════════════════════════════════════════════

@@ -17,6 +17,8 @@ import com.planb.planb_backend.domain.user.repository.RefreshTokenRepository;
 import com.planb.planb_backend.domain.user.repository.UserRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -47,9 +49,13 @@ public class AdminService {
 
     // ── 사용자 목록 ─────────────────────────────────────────────────────────
     @Transactional(readOnly = true)
-    public List<AdminUserDto> getAllUsers() {
-        return userRepository.findAll(Sort.by(Sort.Direction.DESC, "createdAt"))
-                .stream().map(AdminUserDto::from).toList();
+    public AdminPageResponse<AdminUserDto> getAllUsers(int page, int size) {
+        Page<User> userPage = userRepository.findAll(
+                PageRequest.of(page, size, Sort.by(Sort.Direction.DESC, "createdAt")));
+        List<AdminUserDto> content = userPage.getContent().stream()
+                .map(AdminUserDto::from).toList();
+        return new AdminPageResponse<>(content, userPage.getTotalElements(),
+                userPage.getTotalPages(), userPage.getNumber(), size);
     }
 
     // ── 사용자 강제 삭제 ────────────────────────────────────────────────────
@@ -140,9 +146,13 @@ public class AdminService {
 
     // ── DB 장소 전체 목록 (장소 관리 탭) ───────────────────────────────────
     @Transactional(readOnly = true)
-    public List<AdminPlaceDto> getAllPlaces() {
-        return placeRepository.findAll(Sort.by(Sort.Direction.DESC, "lastSyncedAt"))
-                .stream().map(AdminPlaceDto::from).toList();
+    public AdminPageResponse<AdminPlaceDto> getAllPlaces(int page, int size) {
+        Page<Place> placePage = placeRepository.findAll(
+                PageRequest.of(page, size, Sort.by(Sort.Direction.DESC, "lastSyncedAt")));
+        List<AdminPlaceDto> content = placePage.getContent().stream()
+                .map(AdminPlaceDto::from).toList();
+        return new AdminPageResponse<>(content, placePage.getTotalElements(),
+                placePage.getTotalPages(), placePage.getNumber(), size);
     }
 
     // ── 특정 사용자의 무드 선호도 조회 ────────────────────────────────────
@@ -158,13 +168,15 @@ public class AdminService {
     // ── 날씨 알림 전체 목록 (알림 관제 탭) ────────────────────────────────
     /**
      * N+1 방지:
-     * 1) Notification 전체 1회 조회
+     * 1) Notification 페이지 단위 조회
      * 2) userId 배치 → User 1회 IN 조회
      * 3) planId 배치 → TripPlace FETCH JOIN (itinerary, trip) 1회 조회
      */
     @Transactional(readOnly = true)
-    public List<AdminNotificationDto> getAllNotifications() {
-        List<Notification> notifications = adminNotificationRepository.findAllByOrderByCreatedAtDesc();
+    public AdminPageResponse<AdminNotificationDto> getAllNotifications(int page, int size) {
+        Page<Notification> notifPage = adminNotificationRepository.findAll(
+                PageRequest.of(page, size, Sort.by(Sort.Direction.DESC, "createdAt")));
+        List<Notification> notifications = notifPage.getContent();
 
         // 배치 User 로드
         List<Long> userIds = notifications.stream()
@@ -180,7 +192,7 @@ public class AdminService {
                 : tripPlaceRepository.findAllById(planIds).stream()
                         .collect(Collectors.toMap(TripPlace::getTripPlaceId, tp -> tp));
 
-        return notifications.stream().map(n -> {
+        List<AdminNotificationDto> content = notifications.stream().map(n -> {
             User      user     = userMap.get(n.getUserId());
             TripPlace tp       = tripPlaceMap.get(n.getPlanId());
             String    tripTitle = null;
@@ -189,6 +201,9 @@ public class AdminService {
             } catch (Exception ignored) {}
             return AdminNotificationDto.from(n, user, tp, tripTitle);
         }).toList();
+
+        return new AdminPageResponse<>(content, notifPage.getTotalElements(),
+                notifPage.getTotalPages(), notifPage.getNumber(), size);
     }
 
     // ── 날씨 스케줄러 수동 실행 ────────────────────────────────────────────
@@ -200,16 +215,20 @@ public class AdminService {
 
     // ── 즐겨찾기 전체 목록 ──────────────────────────────────────────────────
     @Transactional(readOnly = true)
-    public List<AdminBookmarkDto> getAllBookmarks() {
-        List<Bookmark> bookmarks = bookmarkRepository.findAll(Sort.by(Sort.Direction.DESC, "createdAt"));
+    public AdminPageResponse<AdminBookmarkDto> getAllBookmarks(int page, int size) {
+        Page<Bookmark> bookmarkPage = bookmarkRepository.findAll(
+                PageRequest.of(page, size, Sort.by(Sort.Direction.DESC, "createdAt")));
+        List<Bookmark> bookmarks = bookmarkPage.getContent();
 
         List<Long> userIds = bookmarks.stream().map(Bookmark::getUserId).distinct().toList();
         Map<Long, User> userMap = userRepository.findAllById(userIds).stream()
                 .collect(Collectors.toMap(User::getId, u -> u));
 
-        return bookmarks.stream()
+        List<AdminBookmarkDto> content = bookmarks.stream()
                 .map(b -> AdminBookmarkDto.from(b, userMap.get(b.getUserId())))
                 .toList();
+        return new AdminPageResponse<>(content, bookmarkPage.getTotalElements(),
+                bookmarkPage.getTotalPages(), bookmarkPage.getNumber(), size);
     }
 
     // ── 즐겨찾기 강제 삭제 ─────────────────────────────────────────────────
@@ -265,6 +284,18 @@ public class AdminService {
                 notificationId, n.getUserId(),
                 user.getExpoPushToken().substring(0, Math.min(10, user.getExpoPushToken().length())));
     }
+
+    // ════════════════════════════════════════════════════════════════════════
+    // 페이지네이션 응답 래퍼
+    // ════════════════════════════════════════════════════════════════════════
+
+    public record AdminPageResponse<T>(
+            List<T> content,
+            long    totalElements,
+            int     totalPages,
+            int     currentPage,
+            int     pageSize
+    ) {}
 
     // ════════════════════════════════════════════════════════════════════════
     // DTOs

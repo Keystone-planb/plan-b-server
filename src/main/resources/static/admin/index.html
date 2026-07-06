@@ -203,6 +203,13 @@
         </div>
         <div id="users-empty" class="py-10 text-center text-gray-400 text-xs hidden">검색 결과가 없습니다.</div>
         <div id="users-count" class="px-5 py-2 text-xs text-gray-400 text-right border-t"></div>
+        <div id="users-pagination" class="hidden px-5 py-2 flex items-center justify-between border-t bg-gray-50">
+          <button id="users-prev-btn" onclick="goUsersPage(-1)"
+                  class="text-xs px-3 py-1.5 rounded border border-gray-300 text-gray-600 hover:bg-white disabled:opacity-40 disabled:cursor-not-allowed transition">← 이전</button>
+          <span id="users-page-info" class="text-xs text-gray-500"></span>
+          <button id="users-next-btn" onclick="goUsersPage(1)"
+                  class="text-xs px-3 py-1.5 rounded border border-gray-300 text-gray-600 hover:bg-white disabled:opacity-40 disabled:cursor-not-allowed transition">다음 →</button>
+        </div>
       </section>
 
       <!-- ── 선택된 사용자의 여행 패널 ── -->
@@ -352,6 +359,13 @@
         </div>
         <div id="p-empty" class="py-10 text-center text-gray-400 text-xs hidden">검색 결과가 없습니다.</div>
         <div id="p-count" class="px-5 py-2 text-xs text-gray-400 text-right border-t"></div>
+        <div id="p-pagination" class="hidden px-5 py-2 flex items-center justify-between border-t bg-gray-50">
+          <button id="p-prev-btn" onclick="goPlacesPage(-1)"
+                  class="text-xs px-3 py-1.5 rounded border border-gray-300 text-gray-600 hover:bg-white disabled:opacity-40 disabled:cursor-not-allowed transition">← 이전</button>
+          <span id="p-page-info" class="text-xs text-gray-500"></span>
+          <button id="p-next-btn" onclick="goPlacesPage(1)"
+                  class="text-xs px-3 py-1.5 rounded border border-gray-300 text-gray-600 hover:bg-white disabled:opacity-40 disabled:cursor-not-allowed transition">다음 →</button>
+        </div>
       </section>
     </div><!-- /tab-places -->
 
@@ -413,6 +427,13 @@
         </div>
         <div id="n-empty" class="py-10 text-center text-gray-400 text-xs hidden">알림 데이터가 없습니다.</div>
         <div id="n-count" class="px-5 py-2 text-xs text-gray-400 text-right border-t"></div>
+        <div id="n-pagination" class="hidden px-5 py-2 flex items-center justify-between border-t bg-gray-50">
+          <button id="n-prev-btn" onclick="goNotificationsPage(-1)"
+                  class="text-xs px-3 py-1.5 rounded border border-gray-300 text-gray-600 hover:bg-white disabled:opacity-40 disabled:cursor-not-allowed transition">← 이전</button>
+          <span id="n-page-info" class="text-xs text-gray-500"></span>
+          <button id="n-next-btn" onclick="goNotificationsPage(1)"
+                  class="text-xs px-3 py-1.5 rounded border border-gray-300 text-gray-600 hover:bg-white disabled:opacity-40 disabled:cursor-not-allowed transition">다음 →</button>
+        </div>
       </section>
     </div><!-- /tab-notifications -->
 
@@ -450,6 +471,13 @@
         </div>
         <div id="bm-empty" class="py-10 text-center text-gray-400 text-xs hidden">즐겨찾기 데이터가 없습니다.</div>
         <div id="bm-count" class="px-5 py-2 text-xs text-gray-400 text-right border-t"></div>
+        <div id="bm-pagination" class="hidden px-5 py-2 flex items-center justify-between border-t bg-gray-50">
+          <button id="bm-prev-btn" onclick="goBookmarksPage(-1)"
+                  class="text-xs px-3 py-1.5 rounded border border-gray-300 text-gray-600 hover:bg-white disabled:opacity-40 disabled:cursor-not-allowed transition">← 이전</button>
+          <span id="bm-page-info" class="text-xs text-gray-500"></span>
+          <button id="bm-next-btn" onclick="goBookmarksPage(1)"
+                  class="text-xs px-3 py-1.5 rounded border border-gray-300 text-gray-600 hover:bg-white disabled:opacity-40 disabled:cursor-not-allowed transition">다음 →</button>
+        </div>
       </section>
     </div><!-- /tab-bookmarks -->
 
