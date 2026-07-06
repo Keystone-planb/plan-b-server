@@ -161,31 +161,35 @@ public class PlaceService {
                 googleMapsConfig.getApiKey().length(),
                 googleMapsConfig.getApiKey().length() >= 5 ? googleMapsConfig.getApiKey().substring(0, 5) : "짧음(비정상)");
 
-        Map<String, Object> response = webClient.get()
-                .uri(uriBuilder -> uriBuilder
-                        .path(DETAILS_PATH)
-                        .queryParam("place_id", placeId)
-                        .queryParam("fields", "name,formatted_address,rating,reviews,opening_hours,geometry")
-                        .queryParam("key", googleMapsConfig.getApiKey())
-                        .queryParam("language", "ko")
-                        .build())
-                .retrieve()
-                // 4xx: 잘못된 API 키, 파라미터 오류 등
-                .onStatus(status -> status.is4xxClientError(), clientResponse -> {
-                    log.error("[Place] 클라이언트 오류 - HTTP {}", clientResponse.statusCode());
-                    return clientResponse.createException();
-                })
-                // 5xx: 구글 서버 내부 오류
-                .onStatus(status -> status.is5xxServerError(), clientResponse -> {
-                    log.error("[Place] 구글 서버 오류 - HTTP {}", clientResponse.statusCode());
-                    return clientResponse.createException();
-                })
-                .bodyToMono(Map.class)
-                .block();
+        Map<String, Object> response;
+        try {
+            response = webClient.get()
+                    .uri(uriBuilder -> uriBuilder
+                            .path(DETAILS_PATH)
+                            .queryParam("place_id", placeId)
+                            .queryParam("fields", "name,formatted_address,rating,reviews,opening_hours,geometry")
+                            .queryParam("key", googleMapsConfig.getApiKey())
+                            .queryParam("language", "ko")
+                            .build())
+                    .retrieve()
+                    .onStatus(status -> status.is4xxClientError(), clientResponse -> {
+                        log.warn("[Place] 구글 API 4xx - placeId: {}, HTTP {}", placeId, clientResponse.statusCode());
+                        return clientResponse.createException();
+                    })
+                    .onStatus(status -> status.is5xxServerError(), clientResponse -> {
+                        log.warn("[Place] 구글 API 5xx - placeId: {}, HTTP {}", placeId, clientResponse.statusCode());
+                        return clientResponse.createException();
+                    })
+                    .bodyToMono(Map.class)
+                    .block();
+        } catch (Exception e) {
+            log.warn("[Place] 장소 상세 조회 실패 - placeId: {}, error: {}", placeId, e.getMessage());
+            throw new IllegalArgumentException("장소 정보를 가져올 수 없습니다. (placeId: " + placeId + ")");
+        }
 
         if (response == null) {
-            log.error("[Place] 장소 상세 응답이 null - placeId: {}", placeId);
-            throw new RuntimeException("구글 Places API 응답이 없습니다.");
+            log.warn("[Place] 장소 상세 응답이 null - placeId: {}", placeId);
+            throw new IllegalArgumentException("장소 정보를 가져올 수 없습니다. (placeId: " + placeId + ")");
         }
 
         String status = (String) response.get("status");
@@ -193,13 +197,13 @@ public class PlaceService {
 
         if ("NOT_FOUND".equals(status)) {
             log.warn("[Place] 장소를 찾을 수 없음 - placeId: {}", placeId);
-            throw new RuntimeException("해당 장소를 찾을 수 없습니다. (placeId: " + placeId + ")");
+            throw new IllegalArgumentException("해당 장소를 찾을 수 없습니다. (placeId: " + placeId + ")");
         }
 
         if (!"OK".equals(status)) {
             String errorMessage = (String) response.getOrDefault("error_message", "알 수 없는 오류");
-            log.error("[Place] API 오류 - status: {}, message: {}", status, errorMessage);
-            throw new RuntimeException("장소 상세 조회에 실패했습니다. (status: " + status + ")");
+            log.warn("[Place] API 오류 - status: {}, message: {}", status, errorMessage);
+            throw new IllegalArgumentException("장소 상세 조회에 실패했습니다. (status: " + status + ")");
         }
 
         Map<String, Object> result = (Map<String, Object>) response.get("result");
