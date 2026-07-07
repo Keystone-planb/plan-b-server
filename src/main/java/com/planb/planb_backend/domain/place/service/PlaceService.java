@@ -211,9 +211,13 @@ public class PlaceService {
         // DB에서 AI 분석 태그 조회 (분석 미완료 장소는 Optional.empty)
         Optional<Place> dbPlace = placeRepository.findByGooglePlaceId(placeId);
 
-        // 최초 조회 시 백그라운드 분석 자동 트리거 (두 번째 조회부터 AI 필드 채워짐)
-        if (dbPlace.isEmpty()) {
-            log.info("[Place] DB 미등록 장소 — 자동 분석 시작: {}", placeId);
+        // 최초 조회 시 or DB에 있지만 분석 미완료(space=null)인 경우 백그라운드 분석 자동 트리거
+        boolean needsAnalysis = dbPlace.isEmpty()
+                || dbPlace.map(p -> p.getSpace() == null).orElse(false);
+        if (needsAnalysis) {
+            log.info("[Place] 분석 트리거 — {} (DB미등록={}, space미완료={})",
+                    placeId, dbPlace.isEmpty(),
+                    dbPlace.map(p -> p.getSpace() == null).orElse(false));
             placeAnalysisService.triggerAnalysisAsync(placeId);
         }
 
