@@ -295,9 +295,11 @@ public class PlaceService {
 
         Optional<Place> dbPlace = placeRepository.findByGooglePlaceId(placeId);
         String reviewData = dbPlace.map(Place::getReviewData).orElse(null);
+        boolean analyzed  = dbPlace.map(p -> p.getSpace() != null).orElse(false); // space != null = 분석 완료 (리뷰 없어도)
 
         return PlaceSummaryResponse.builder()
                 .placeId(placeId)
+                .analyzed(analyzed)
                 .aiSummary(extractTotalSummary(reviewData))
                 .googleReview(extractPlatformSummary(reviewData, "Google"))
                 .naverReview(extractPlatformSummary(reviewData, "Naver"))
