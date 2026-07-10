@@ -21,6 +21,8 @@ public class RestAuthenticationEntryPoint implements AuthenticationEntryPoint {
                 request.getMethod(), request.getRequestURI(), authException.getMessage());
         response.setStatus(HttpServletResponse.SC_UNAUTHORIZED);
         response.setContentType("application/json;charset=UTF-8");
-        response.getWriter().write("{\"error\": \"인증이 필요합니다. Bearer 토큰을 확인해 주세요.\"}");
+        response.getWriter().write(
+                "{\"error\": \"인증이 필요합니다. Bearer 토큰을 확인해 주세요.\", \"error_code\": \"AUTHENTICATION_REQUIRED\"}"
+        );
     }
 }

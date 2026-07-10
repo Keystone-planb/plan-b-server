@@ -79,21 +79,23 @@ public class JwtFilter extends OncePerRequestFilter {
 
         } catch (ExpiredJwtException e) {
             log.warn("[JWT] 만료된 토큰 - uri: {}", request.getRequestURI());
-            sendUnauthorized(response, "만료된 토큰입니다. 다시 로그인해 주세요.");
+            sendUnauthorized(response, "만료된 토큰입니다. 다시 로그인해 주세요.", "ACCESS_TOKEN_EXPIRED");
             return;
         } catch (JwtException | IllegalArgumentException e) {
             log.warn("[JWT] 유효하지 않은 토큰 - uri: {}, cause: {}", request.getRequestURI(), e.getMessage());
-            sendUnauthorized(response, "유효하지 않은 토큰입니다.");
+            sendUnauthorized(response, "유효하지 않은 토큰입니다.", "ACCESS_TOKEN_INVALID");
             return;
         }
 
         filterChain.doFilter(request, response);
     }
 
-    private void sendUnauthorized(HttpServletResponse response, String message) throws IOException {
+    private void sendUnauthorized(HttpServletResponse response, String message, String errorCode) throws IOException {
         response.setStatus(HttpServletResponse.SC_UNAUTHORIZED);
         response.setContentType("application/json;charset=UTF-8");
-        response.getWriter().write("{\"error\": \"" + message + "\"}");
+        response.getWriter().write(
+                "{\"error\": \"" + message + "\", \"error_code\": \"" + errorCode + "\"}"
+        );
     }
 
     private String resolveToken(HttpServletRequest request) {

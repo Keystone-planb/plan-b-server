@@ -39,8 +39,11 @@ public class AuthController {
             return ResponseEntity.ok(response);
         } catch (IllegalArgumentException e) {
             // 토큰 만료·무효 → 401 반환 (프론트 인터셉터가 로그아웃 처리)
+            String errorCode = e.getMessage().contains("만료된")
+                    ? "REFRESH_TOKEN_EXPIRED"
+                    : "REFRESH_TOKEN_INVALID";
             return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
-                    .body(Map.of("error", e.getMessage()));
+                    .body(Map.of("error", e.getMessage(), "error_code", errorCode));
         }
     }
 
