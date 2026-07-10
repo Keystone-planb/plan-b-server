@@ -102,7 +102,8 @@ public class NotificationService {
 
     private NotificationResponse toResponse(Notification n) {
         // TripPlace 조회 — tripId, day, visitTime, endTime, originalPlace 모두 여기서 추출
-        var tripPlace = tripPlaceRepository.findById(n.getPlanId()).orElse(null);
+        // JOIN FETCH 로 itinerary + trip 즉시 로딩 → LazyInitializationException 방지
+        var tripPlace = tripPlaceRepository.findByIdWithItineraryAndTrip(n.getPlanId()).orElse(null);
 
         Long   tripId    = null;
         Integer day      = null;
@@ -162,14 +163,13 @@ public class NotificationService {
      * AI 분석 미완료(space=null) 장소는 후보로 포함해 결과 부족 방지.
      */
     private List<AlternativePlaceDto> fetchLiveAlternatives(Notification n) {
-        // 원래 장소 Google Place ID 조회 (명시적 제외용)
-        String originalGooglePlaceId = tripPlaceRepository.findById(n.getPlanId())
-                .map(tp -> tp.getPlaceId())
-                .orElse(null);
+        // JOIN FETCH 로 itinerary + trip 즉시 로딩 → LazyInitializationException 방지
+        TripPlace tp = tripPlaceRepository.findByIdWithItineraryAndTrip(n.getPlanId()).orElse(null);
 
-        Long tripId = tripPlaceRepository.findById(n.getPlanId())
-                .map(tp -> tp.getItinerary().getTrip().getTripId())
-                .orElse(null);
+        // 원래 장소 Google Place ID 조회 (명시적 제외용)
+        String originalGooglePlaceId = tp != null ? tp.getPlaceId() : null;
+
+        Long tripId = tp != null ? tp.getItinerary().getTrip().getTripId() : null;
 
         UserContext ctx = UserContext.builder()
                 .userId(n.getUserId())

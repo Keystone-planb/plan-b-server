@@ -65,6 +65,17 @@ public interface TripPlaceRepository extends JpaRepository<TripPlace, Long> {
     Optional<LocalDate> findItineraryDateById(@Param("id") Long id);
 
     /**
+     * 알림 응답 생성용 — itinerary + trip 을 한 번의 쿼리로 FETCH
+     * @Transactional 없는 컨텍스트에서 getItinerary().getTrip() 접근 시
+     * LazyInitializationException 방지용
+     */
+    @Query("SELECT tp FROM TripPlace tp " +
+           "JOIN FETCH tp.itinerary i " +
+           "JOIN FETCH i.trip t " +
+           "WHERE tp.tripPlaceId = :id")
+    Optional<TripPlace> findByIdWithItineraryAndTrip(@Param("id") Long id);
+
+    /**
      * [기능 6 — 틈새 추천] 특정 여행의 모든 일정을 날짜·방문시간 오름차순으로 조회
      * visitOrder(추가 순서)가 아닌 visitTime(실제 방문 시간) 기준으로 정렬해야
      * 시간 역순으로 추가된 일정도 갭 계산이 올바르게 동작함.
