@@ -75,6 +75,7 @@ public class SecurityConfig {
                 .dispatcherTypeMatchers(DispatcherType.ERROR, DispatcherType.ASYNC).permitAll()
                 .requestMatchers(HttpMethod.POST, "/api/users/signup").permitAll()
                 .requestMatchers(HttpMethod.POST, "/api/auth/login").permitAll()
+                .requestMatchers(HttpMethod.POST, "/api/auth/logout").permitAll()
                 .requestMatchers(HttpMethod.POST, "/api/auth/refresh").permitAll()
                 .requestMatchers(HttpMethod.POST, "/api/auth/email/request").permitAll()
                 .requestMatchers(HttpMethod.POST, "/api/auth/email/verify").permitAll()
@@ -154,8 +155,9 @@ public class SecurityConfig {
         config.setAllowedOriginPatterns(List.of(
                 "http://localhost:*",                       // 로컬 개발 (포트 무관)
                 "https://api-dev.planb-travel.cloud",       // api-dev 통합 테스트 서버
-                "null",                                     // React Native WebView (로컬 번들 파일)
-                "*"                                         // 모바일 앱 네이티브 요청
+                "https://api.planb-travel.cloud",           // 운영 서버
+                "null"                                      // React Native WebView (로컬 번들 파일)
+                // 네이티브 앱 fetch는 Origin 헤더 없음 → CORS 미적용이므로 "*" 불필요
         ));
         config.setAllowedMethods(List.of("GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"));
         config.setAllowedHeaders(List.of("*"));
