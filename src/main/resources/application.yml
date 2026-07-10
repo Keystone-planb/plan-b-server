@@ -1,3 +1,6 @@
+server:
+  forward-headers-strategy: framework  # ALB(리버스 프록시) 뒤에서 X-Forwarded-Proto: https 신뢰 → HSTS 헤더 정상 응답
+
 spring:
   # 기본 프로필: local (로컬 개발)
   # AWS ECS 배포 시 환경변수 SPRING_PROFILES_ACTIVE=prod 로 오버라이드
