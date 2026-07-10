@@ -34,6 +34,7 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicReference;
 import java.util.stream.Collectors;
 
 /**
@@ -506,6 +507,11 @@ public class RecommendationService {
     void doStreamAsync(UserContext context, SseEmitter emitter, Runnable onDone) {
         AtomicBoolean done = new AtomicBoolean(false);
 
+        // 클라이언트 연결 끊김 시 취소할 분석 Future 목록
+        // — xhr.abort() → onCompletion → cleanup → 각 Future.cancel(true) 호출
+        AtomicReference<List<CompletableFuture<Void>>> futuresRef =
+                new AtomicReference<>(Collections.emptyList());
+
         // heartbeat: 15초마다 comment(": ping") 전송 — iOS/ALB idle timeout(60초) 방지
         ScheduledExecutorService heartbeatScheduler = Executors.newSingleThreadScheduledExecutor();
         ScheduledFuture<?> heartbeatTask = heartbeatScheduler.scheduleAtFixedRate(() -> {
@@ -521,6 +527,10 @@ public class RecommendationService {
             done.set(true);
             heartbeatTask.cancel(true);
             heartbeatScheduler.shutdown();
+            // 클라이언트가 일찍 연결을 끊었을 때 진행 중인 분석 Future 취소
+            // cancel(true): Future를 CANCELLED 상태로 만들어 thenAccept 체인 실행 방지
+            // (진행 중인 네트워크 I/O는 즉시 중단되지 않지만 결과를 처리하거나 전송하지 않음)
+            futuresRef.get().forEach(f -> f.cancel(true));
             if (onDone != null) onDone.run();
         };
 
@@ -653,6 +663,9 @@ public class RecommendationService {
                                     return null;
                                 }))
                         .collect(Collectors.toList());
+
+                // 클라이언트 조기 연결 종료 시 cleanup에서 취소할 수 있도록 등록
+                futuresRef.set(futures);
 
                 // 전체 완료 대기 (타임아웃 초과 시 완료된 결과만 사용)
                 try {
