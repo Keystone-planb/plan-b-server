@@ -124,7 +124,12 @@ public class NotificationService {
 
         if (n.getOriginalLat() != null && n.getOriginalLng() != null) {
             // 실시간 근처 탐색 — 원래 장소 좌표 기반
-            alternatives = fetchLiveAlternatives(n);
+            try {
+                alternatives = fetchLiveAlternatives(n);
+            } catch (Exception e) {
+                log.warn("[Notification] 대안 장소 조회 실패 - notificationId={}: {}", n.getId(), e.getMessage());
+                alternatives = Collections.emptyList();
+            }
         } else {
             // fallback: pre-stored IDs
             alternatives = parseAltIds(n.getAlternativePlaceIds()).stream()
