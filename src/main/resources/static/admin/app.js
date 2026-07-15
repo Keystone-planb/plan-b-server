@@ -195,8 +195,11 @@ async function triggerWeatherScheduler() {
 }
 
 // 차트 인스턴스 보관 (재생성 전 destroy)
-let chartBar = null;
-let chartDoughnut = null;
+let chartLine = null;
+
+// 데이터 수치 탭 상태
+let tsData = null;
+let activeTsTab = 'users';
 
 async function loadStats() {
   try {
@@ -209,87 +212,164 @@ async function loadStats() {
     document.getElementById('stat-notifications').textContent = s.unsentNotifications.toLocaleString() + ' / ' + s.totalNotifications.toLocaleString();
     document.getElementById('stat-bookmarks').textContent     = s.totalBookmarks.toLocaleString() + '개';
 
-    // 대시보드 탭 카드 업데이트
-    document.getElementById('chart-stat-users').textContent  = s.totalUsers.toLocaleString() + '명';
-    document.getElementById('chart-stat-trips').textContent  = s.totalTrips.toLocaleString() + '개';
-    document.getElementById('chart-stat-places').textContent = s.totalPlaces.toLocaleString() + '개';
-    document.getElementById('chart-stat-prefs').textContent  = (s.totalPreferences || 0).toLocaleString() + '건';
-
-    // 차트 렌더링
-    renderCharts(s);
+    // 데이터 수치 탭 요약 카드 업데이트
+    const elUsers = document.getElementById('ts-total-users');
+    const elTrips = document.getElementById('ts-total-trips');
+    const elPrefs = document.getElementById('ts-total-prefs');
+    if (elUsers) elUsers.textContent = s.totalUsers.toLocaleString();
+    if (elTrips) elTrips.textContent = s.totalTrips.toLocaleString();
+    if (elPrefs) elPrefs.textContent = (s.totalPreferences || 0).toLocaleString();
   } catch (_) {
     // 통계 로드 실패 시 기존 기능에 영향 없이 조용히 무시
   }
 }
 
-function renderCharts(s) {
-  // 바 차트 — 전체 현황
-  const barCtx = document.getElementById('chart-bar');
-  if (barCtx) {
-    if (chartBar) chartBar.destroy();
-    chartBar = new Chart(barCtx, {
-      type: 'bar',
-      data: {
-        labels: ['가입 유저', '생성 여행', '즐겨찾기', '취향 DNA 학습'],
-        datasets: [{
-          label: '누적 수',
-          data: [
-            s.totalUsers,
-            s.totalTrips,
-            s.totalBookmarks,
-            s.totalPreferences || 0
-          ],
-          backgroundColor: [
-            'rgba(99, 102, 241, 0.7)',
-            'rgba(59, 130, 246, 0.7)',
-            'rgba(245, 158, 11, 0.7)',
-            'rgba(236, 72, 153, 0.7)'
-          ],
-          borderRadius: 6,
-          borderSkipped: false
-        }]
-      },
-      options: {
-        responsive: true,
-        plugins: { legend: { display: false } },
-        scales: {
-          y: { beginAtZero: true, ticks: { precision: 0 } }
-        }
-      }
-    });
+// ── 데이터 수치 탭: 시계열 로드 ──────────────────────────────────────────
+async function loadTimeSeries() {
+  try {
+    tsData = await apiFetch('/api/admin/stats/timeseries');
+
+    // 중단 탭 지표 업데이트
+    setTsTab('users',  tsData.newUsersLast7,  tsData.growthUsers);
+    setTsTab('trips',  tsData.newTripsLast7,  tsData.growthTrips);
+    setTsTab('places', tsData.newPlacesLast7, tsData.growthPlaces);
+
+    const elMetricPrefs = document.getElementById('ts-metric-prefs');
+    const elGrowthPrefs = document.getElementById('ts-growth-prefs');
+    if (elMetricPrefs) elMetricPrefs.textContent = (tsData.totalPreferences || 0).toLocaleString();
+    if (elGrowthPrefs) {
+      elGrowthPrefs.textContent = '누적 데이터';
+      elGrowthPrefs.className   = 'text-xs text-gray-400 mt-1.5';
+    }
+
+    switchTsTab(activeTsTab);
+  } catch (_) {}
+}
+
+function setTsTab(key, value, growth) {
+  const elMetric = document.getElementById(`ts-metric-${key}`);
+  const elGrowth = document.getElementById(`ts-growth-${key}`);
+  if (elMetric) elMetric.textContent = (value || 0).toLocaleString();
+  if (!elGrowth) return;
+  if (growth > 0) {
+    elGrowth.textContent = `↑ ${growth.toFixed(1)}%`;
+    elGrowth.className   = 'text-xs text-green-500 mt-1.5 font-medium';
+  } else if (growth < 0) {
+    elGrowth.textContent = `↓ ${Math.abs(growth).toFixed(1)}%`;
+    elGrowth.className   = 'text-xs text-red-500 mt-1.5 font-medium';
+  } else {
+    elGrowth.textContent = '-';
+    elGrowth.className   = 'text-xs text-gray-400 mt-1.5';
+  }
+}
+
+function switchTsTab(key) {
+  activeTsTab = key;
+
+  // 탭 하이라이트
+  ['users', 'trips', 'places', 'prefs'].forEach(k => {
+    const btn = document.getElementById(`ts-tab-${k}`);
+    if (!btn) return;
+    if (k === key) {
+      btn.classList.add('bg-gray-50', 'border-b-2', 'border-indigo-500');
+    } else {
+      btn.classList.remove('bg-gray-50', 'border-b-2', 'border-indigo-500');
+    }
+  });
+
+  const chartWrap = document.getElementById('ts-chart-wrap');
+  const noData    = document.getElementById('ts-no-data');
+  const titleEl   = document.getElementById('ts-chart-title');
+
+  // prefs 탭: 시계열 없음
+  if (key === 'prefs') {
+    if (chartWrap) chartWrap.classList.add('hidden');
+    if (noData)    noData.classList.remove('hidden');
+    if (titleEl)   titleEl.textContent = 'AI 추천 DNA 학습 (누적)';
+    return;
   }
 
-  // 도넛 차트 — 장소 분석 현황
-  const doughnutCtx = document.getElementById('chart-doughnut');
-  if (doughnutCtx) {
-    if (chartDoughnut) chartDoughnut.destroy();
-    const pending = s.totalPlaces - s.analyzedPlaces;
-    chartDoughnut = new Chart(doughnutCtx, {
-      type: 'doughnut',
-      data: {
-        labels: ['분석 완료', '분석 미완료'],
-        datasets: [{
-          data: [s.analyzedPlaces, pending],
-          backgroundColor: [
-            'rgba(34, 197, 94, 0.8)',
-            'rgba(234, 179, 8, 0.8)'
-          ],
-          borderWidth: 2
-        }]
+  if (chartWrap) chartWrap.classList.remove('hidden');
+  if (noData)    noData.classList.add('hidden');
+
+  const titleMap = {
+    users:  '신규 가입자 추이 (최근 14일)',
+    trips:  '여행 생성 추이 (최근 14일)',
+    places: 'AI 장소 분석 추이 (최근 14일)',
+  };
+  if (titleEl) titleEl.textContent = titleMap[key] || '';
+
+  if (!tsData) return;
+
+  // 데이터 키 매핑
+  const dataKeyMap = { users: 'dailyUsers', trips: 'dailyTrips', places: 'dailyPlaces' };
+  const rawData    = tsData[dataKeyMap[key]] || [];
+
+  // 인덱스 0~6 = 이전 7일, 7~13 = 현재 7일
+  const currentLabels  = (tsData.labels || []).slice(7);
+  const currentData    = rawData.slice(7);
+  const previousData   = rawData.slice(0, 7);
+
+  renderLineChart(currentLabels, currentData, previousData);
+}
+
+function renderLineChart(labels, current, previous) {
+  const ctx = document.getElementById('chart-line');
+  if (!ctx) return;
+  if (chartLine) { chartLine.destroy(); chartLine = null; }
+
+  chartLine = new Chart(ctx, {
+    type: 'line',
+    data: {
+      labels,
+      datasets: [
+        {
+          label: '현재 기간',
+          data: current,
+          borderColor: 'rgba(59, 130, 246, 1)',
+          backgroundColor: 'rgba(59, 130, 246, 0.07)',
+          borderWidth: 2,
+          fill: true,
+          tension: 0.35,
+          pointBackgroundColor: 'transparent',
+          pointBorderColor: 'rgba(59, 130, 246, 1)',
+          pointBorderWidth: 2,
+          pointRadius: 4,
+          pointHoverRadius: 6,
+        },
+        {
+          label: '이전 기간',
+          data: previous,
+          borderColor: 'rgba(59, 130, 246, 0.35)',
+          borderDash: [5, 4],
+          borderWidth: 1.5,
+          fill: false,
+          tension: 0.35,
+          pointRadius: 0,
+          pointHoverRadius: 4,
+        }
+      ]
+    },
+    options: {
+      responsive: true,
+      interaction: { mode: 'index', intersect: false },
+      plugins: {
+        legend: {
+          position: 'bottom',
+          labels: { usePointStyle: true, pointStyleWidth: 20, font: { size: 12 } }
+        }
       },
-      options: {
-        responsive: true,
-        plugins: {
-          legend: { position: 'bottom' },
-          tooltip: {
-            callbacks: {
-              label: ctx => ` ${ctx.label}: ${ctx.parsed.toLocaleString()}개`
-            }
-          }
+      scales: {
+        x: { grid: { display: false }, ticks: { font: { size: 11 } } },
+        y: {
+          position: 'right',
+          beginAtZero: true,
+          ticks: { precision: 0, font: { size: 11 } },
+          grid: { color: 'rgba(0,0,0,0.04)' }
         }
       }
-    });
-  }
+    }
+  });
 }
 
 // ════════════════════════════════════════════════════════════════════════════
@@ -307,6 +387,7 @@ function switchTab(name) {
       btn.classList.add('text-gray-400', 'border-transparent', 'font-medium');
     }
   });
+  if (name === 'stats'         && !tsData)                        loadTimeSeries();
   if (name === 'users'         && allUsers.length          === 0) loadUsers();
   if (name === 'places'        && allPlaces.length         === 0) loadDbPlaces();
   if (name === 'notifications' && allNotifications.length  === 0) loadNotifications();

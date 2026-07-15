@@ -170,47 +170,79 @@
   <!-- 본문 -->
   <main class="flex-1 max-w-screen-2xl mx-auto w-full px-6 py-6 space-y-6">
 
-    <!-- ══════════ 대시보드 탭 ══════════ -->
-    <div id="tab-stats" class="space-y-6">
+    <!-- ══════════ 데이터 수치 탭 ══════════ -->
+    <div id="tab-stats" class="space-y-5">
 
-      <!-- 핵심 지표 카드 4개 -->
-      <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
-        <div class="bg-white rounded-xl shadow-sm p-5 border-l-4 border-indigo-400">
-          <div class="text-xs text-gray-400 mb-1">가입 유저수</div>
-          <div id="chart-stat-users" class="text-3xl font-bold text-gray-800">—</div>
-          <div class="text-xs text-gray-400 mt-1">누적 가입자</div>
+      <!-- 상단: 요약 카드 3개 -->
+      <div class="grid grid-cols-3 gap-4">
+        <div class="bg-white rounded-xl shadow-sm p-5 flex items-center gap-4">
+          <div class="w-11 h-11 rounded-full bg-orange-50 flex items-center justify-center text-xl flex-shrink-0">👤</div>
+          <div>
+            <div class="text-xs text-gray-400 mb-0.5">총 가입자</div>
+            <div id="ts-total-users" class="text-2xl font-bold text-orange-500">—</div>
+            <div class="text-xs text-gray-400 mt-0.5">명</div>
+          </div>
         </div>
-        <div class="bg-white rounded-xl shadow-sm p-5 border-l-4 border-blue-400">
-          <div class="text-xs text-gray-400 mb-1">여행 생성 횟수</div>
-          <div id="chart-stat-trips" class="text-3xl font-bold text-gray-800">—</div>
-          <div class="text-xs text-gray-400 mt-1">누적 생성 여행</div>
+        <div class="bg-white rounded-xl shadow-sm p-5 flex items-center gap-4">
+          <div class="w-11 h-11 rounded-full bg-orange-50 flex items-center justify-center text-xl flex-shrink-0">✈️</div>
+          <div>
+            <div class="text-xs text-gray-400 mb-0.5">총 여행 생성</div>
+            <div id="ts-total-trips" class="text-2xl font-bold text-orange-500">—</div>
+            <div class="text-xs text-gray-400 mt-0.5">개</div>
+          </div>
         </div>
-        <div class="bg-white rounded-xl shadow-sm p-5 border-l-4 border-green-400">
-          <div class="text-xs text-gray-400 mb-1">AI 분석 장소수</div>
-          <div id="chart-stat-places" class="text-3xl font-bold text-gray-800">—</div>
-          <div class="text-xs text-gray-400 mt-1">누적 탐색 장소</div>
-        </div>
-        <div class="bg-white rounded-xl shadow-sm p-5 border-l-4 border-pink-400">
-          <div class="text-xs text-gray-400 mb-1">취향 DNA 학습</div>
-          <div id="chart-stat-prefs" class="text-3xl font-bold text-gray-800">—</div>
-          <div class="text-xs text-gray-400 mt-1">누적 학습 데이터</div>
+        <div class="bg-white rounded-xl shadow-sm p-5 flex items-center gap-4">
+          <div class="w-11 h-11 rounded-full bg-orange-50 flex items-center justify-center text-xl flex-shrink-0">🧬</div>
+          <div>
+            <div class="text-xs text-gray-400 mb-0.5">AI 추천 DNA 학습</div>
+            <div id="ts-total-prefs" class="text-2xl font-bold text-orange-500">—</div>
+            <div class="text-xs text-gray-400 mt-0.5">건</div>
+          </div>
         </div>
       </div>
 
-      <!-- 차트 2개 -->
-      <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+      <!-- 중단 + 하단: 탭 지표 + 라인 차트 (한 카드 안에) -->
+      <div class="bg-white rounded-xl shadow-sm overflow-hidden">
 
-        <!-- 전체 현황 바 차트 -->
-        <div class="bg-white rounded-xl shadow-sm p-5">
-          <div class="font-bold text-sm text-gray-700 mb-4">전체 서비스 현황</div>
-          <canvas id="chart-bar" height="220"></canvas>
+        <!-- 중단: 4개 탭 지표 -->
+        <div class="grid grid-cols-4 divide-x divide-gray-100 border-b border-gray-100">
+          <button id="ts-tab-users" onclick="switchTsTab('users')"
+                  class="ts-metric-tab p-5 text-left hover:bg-gray-50 transition-colors">
+            <div class="text-xs text-gray-400 mb-2">신규 가입자</div>
+            <div id="ts-metric-users" class="text-2xl font-bold text-gray-800">—</div>
+            <div id="ts-growth-users" class="text-xs text-gray-400 mt-1.5">—</div>
+          </button>
+          <button id="ts-tab-trips" onclick="switchTsTab('trips')"
+                  class="ts-metric-tab p-5 text-left hover:bg-gray-50 transition-colors">
+            <div class="text-xs text-gray-400 mb-2">여행 생성</div>
+            <div id="ts-metric-trips" class="text-2xl font-bold text-gray-800">—</div>
+            <div id="ts-growth-trips" class="text-xs text-gray-400 mt-1.5">—</div>
+          </button>
+          <button id="ts-tab-places" onclick="switchTsTab('places')"
+                  class="ts-metric-tab p-5 text-left hover:bg-gray-50 transition-colors">
+            <div class="text-xs text-gray-400 mb-2">AI 장소 분석</div>
+            <div id="ts-metric-places" class="text-2xl font-bold text-gray-800">—</div>
+            <div id="ts-growth-places" class="text-xs text-gray-400 mt-1.5">—</div>
+          </button>
+          <button id="ts-tab-prefs" onclick="switchTsTab('prefs')"
+                  class="ts-metric-tab p-5 text-left hover:bg-gray-50 transition-colors">
+            <div class="text-xs text-gray-400 mb-2">AI 추천 DNA 학습</div>
+            <div id="ts-metric-prefs" class="text-2xl font-bold text-gray-800">—</div>
+            <div id="ts-growth-prefs" class="text-xs text-gray-400 mt-1.5">—</div>
+          </button>
         </div>
 
-        <!-- 장소 분석 도넛 차트 -->
-        <div class="bg-white rounded-xl shadow-sm p-5">
-          <div class="font-bold text-sm text-gray-700 mb-4">AI 장소 분석 현황</div>
-          <canvas id="chart-doughnut" height="220"></canvas>
+        <!-- 하단: 라인 차트 -->
+        <div class="p-5">
+          <div id="ts-chart-title" class="font-bold text-sm text-gray-700 mb-4">신규 가입자 추이 (최근 14일)</div>
+          <div id="ts-chart-wrap">
+            <canvas id="chart-line" height="180"></canvas>
+          </div>
+          <div id="ts-no-data" class="hidden text-center text-gray-400 py-10 text-sm">
+            누적 수치이므로 시계열 추이를 제공하지 않습니다
+          </div>
         </div>
+
       </div>
 
     </div><!-- /tab-stats -->

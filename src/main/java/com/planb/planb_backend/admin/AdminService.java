@@ -23,8 +23,11 @@ import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.util.ArrayList;
 import java.util.Comparator;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -258,6 +261,68 @@ public class AdminService {
                 totalBookmarks, totalPreferences);
     }
 
+    // ── 시계열 통계 (데이터 수치 탭 라인 차트) ────────────────────────────
+    @Transactional(readOnly = true)
+    public AdminTimeSeriesDto getTimeSeries() {
+        LocalDate today = LocalDate.now();
+        // 14일 윈도우: 인덱스 0~6 = 이전 7일, 7~13 = 현재 7일
+        LocalDateTime from14 = today.minusDays(13).atStartOfDay();
+
+        Map<LocalDate, Long> userMap  = toDateMap(userRepository.countDailyNew(from14));
+        Map<LocalDate, Long> tripMap  = toDateMap(tripRepository.countDailyNew(from14));
+        Map<LocalDate, Long> placeMap = toDateMap(placeRepository.countDailyAnalyzed(from14));
+
+        List<String> labels       = new ArrayList<>();
+        List<Long>   dailyUsers   = new ArrayList<>();
+        List<Long>   dailyTrips   = new ArrayList<>();
+        List<Long>   dailyPlaces  = new ArrayList<>();
+
+        for (int i = 13; i >= 0; i--) {
+            LocalDate d = today.minusDays(i);
+            labels.add(d.getMonthValue() + "/" + d.getDayOfMonth());
+            dailyUsers.add(userMap.getOrDefault(d, 0L));
+            dailyTrips.add(tripMap.getOrDefault(d, 0L));
+            dailyPlaces.add(placeMap.getOrDefault(d, 0L));
+        }
+
+        // 현재 기간 = 뒤 7일(인덱스 7~13), 이전 기간 = 앞 7일(인덱스 0~6)
+        long curUsers  = sumRange(dailyUsers,  7, 14);
+        long prevUsers = sumRange(dailyUsers,  0, 7);
+        long curTrips  = sumRange(dailyTrips,  7, 14);
+        long prevTrips = sumRange(dailyTrips,  0, 7);
+        long curPlaces = sumRange(dailyPlaces, 7, 14);
+        long prevPlaces= sumRange(dailyPlaces, 0, 7);
+
+        long totalPreferences = userPreferenceRepository.count();
+
+        return new AdminTimeSeriesDto(
+                labels, dailyUsers, dailyTrips, dailyPlaces,
+                curUsers,  calcGrowth(prevUsers,  curUsers),
+                curTrips,  calcGrowth(prevTrips,  curTrips),
+                curPlaces, calcGrowth(prevPlaces, curPlaces),
+                totalPreferences
+        );
+    }
+
+    private Map<LocalDate, Long> toDateMap(List<Object[]> rows) {
+        Map<LocalDate, Long> map = new HashMap<>();
+        for (Object[] row : rows) {
+            LocalDate d   = ((java.sql.Date) row[0]).toLocalDate();
+            long      cnt = ((Number) row[1]).longValue();
+            map.put(d, cnt);
+        }
+        return map;
+    }
+
+    private long sumRange(List<Long> list, int from, int to) {
+        return list.subList(from, to).stream().mapToLong(Long::longValue).sum();
+    }
+
+    private double calcGrowth(long prev, long curr) {
+        if (prev == 0) return curr > 0 ? 100.0 : 0.0;
+        return Math.round((curr - prev) * 1000.0 / prev) / 10.0;
+    }
+
     // ── 날씨 알림 수동 재발송 ──────────────────────────────────────────────
     @Transactional
     public void resendNotification(Long notificationId) {
@@ -451,6 +516,21 @@ public class AdminService {
             long unsentNotifications,
             long totalBookmarks,
             long totalPreferences
+    ) {}
+
+    /** 데이터 수치 탭 시계열 DTO */
+    public record AdminTimeSeriesDto(
+            List<String> labels,         // 14일 날짜 레이블
+            List<Long>   dailyUsers,     // 14일 일별 신규 가입자
+            List<Long>   dailyTrips,     // 14일 일별 신규 여행
+            List<Long>   dailyPlaces,    // 14일 일별 AI 장소 분석 완료
+            long   newUsersLast7,        // 현재 7일 신규 가입자 합계
+            double growthUsers,          // 이전 7일 대비 성장률 (%)
+            long   newTripsLast7,
+            double growthTrips,
+            long   newPlacesLast7,
+            double growthPlaces,
+            long   totalPreferences      // 누적 AI 추천 DNA 학습건
     ) {}
 
     /** 즐겨찾기 관리 DTO */

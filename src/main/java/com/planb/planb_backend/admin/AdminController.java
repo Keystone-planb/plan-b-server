@@ -37,6 +37,12 @@ public class AdminController {
         return ResponseEntity.ok(adminService.getStats());
     }
 
+    @Operation(summary = "데이터 수치 탭 시계열 통계 조회 (최근 14일 일별)")
+    @GetMapping("/stats/timeseries")
+    public ResponseEntity<AdminService.AdminTimeSeriesDto> getTimeSeries() {
+        return ResponseEntity.ok(adminService.getTimeSeries());
+    }
+
     // ── 사용자 관리 ─────────────────────────────────────────────────────────
 
     @Operation(summary = "전체 사용자 목록 조회 (페이지네이션)")
