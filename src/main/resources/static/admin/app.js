@@ -194,16 +194,101 @@ async function triggerWeatherScheduler() {
   }
 }
 
+// 차트 인스턴스 보관 (재생성 전 destroy)
+let chartBar = null;
+let chartDoughnut = null;
+
 async function loadStats() {
   try {
     const s = await apiFetch('/api/admin/stats');
+
+    // 상단 stats 바 업데이트
     document.getElementById('stat-users').textContent         = s.totalUsers.toLocaleString() + '명';
     document.getElementById('stat-trips').textContent         = s.totalTrips.toLocaleString() + '개';
     document.getElementById('stat-places').textContent        = s.analyzedPlaces.toLocaleString() + ' / ' + s.totalPlaces.toLocaleString();
     document.getElementById('stat-notifications').textContent = s.unsentNotifications.toLocaleString() + ' / ' + s.totalNotifications.toLocaleString();
     document.getElementById('stat-bookmarks').textContent     = s.totalBookmarks.toLocaleString() + '개';
+
+    // 대시보드 탭 카드 업데이트
+    document.getElementById('chart-stat-users').textContent  = s.totalUsers.toLocaleString() + '명';
+    document.getElementById('chart-stat-trips').textContent  = s.totalTrips.toLocaleString() + '개';
+    document.getElementById('chart-stat-places').textContent = s.totalPlaces.toLocaleString() + '개';
+    document.getElementById('chart-stat-prefs').textContent  = (s.totalPreferences || 0).toLocaleString() + '건';
+
+    // 차트 렌더링
+    renderCharts(s);
   } catch (_) {
     // 통계 로드 실패 시 기존 기능에 영향 없이 조용히 무시
+  }
+}
+
+function renderCharts(s) {
+  // 바 차트 — 전체 현황
+  const barCtx = document.getElementById('chart-bar');
+  if (barCtx) {
+    if (chartBar) chartBar.destroy();
+    chartBar = new Chart(barCtx, {
+      type: 'bar',
+      data: {
+        labels: ['가입 유저', '생성 여행', '즐겨찾기', '취향 DNA 학습'],
+        datasets: [{
+          label: '누적 수',
+          data: [
+            s.totalUsers,
+            s.totalTrips,
+            s.totalBookmarks,
+            s.totalPreferences || 0
+          ],
+          backgroundColor: [
+            'rgba(99, 102, 241, 0.7)',
+            'rgba(59, 130, 246, 0.7)',
+            'rgba(245, 158, 11, 0.7)',
+            'rgba(236, 72, 153, 0.7)'
+          ],
+          borderRadius: 6,
+          borderSkipped: false
+        }]
+      },
+      options: {
+        responsive: true,
+        plugins: { legend: { display: false } },
+        scales: {
+          y: { beginAtZero: true, ticks: { precision: 0 } }
+        }
+      }
+    });
+  }
+
+  // 도넛 차트 — 장소 분석 현황
+  const doughnutCtx = document.getElementById('chart-doughnut');
+  if (doughnutCtx) {
+    if (chartDoughnut) chartDoughnut.destroy();
+    const pending = s.totalPlaces - s.analyzedPlaces;
+    chartDoughnut = new Chart(doughnutCtx, {
+      type: 'doughnut',
+      data: {
+        labels: ['분석 완료', '분석 미완료'],
+        datasets: [{
+          data: [s.analyzedPlaces, pending],
+          backgroundColor: [
+            'rgba(34, 197, 94, 0.8)',
+            'rgba(234, 179, 8, 0.8)'
+          ],
+          borderWidth: 2
+        }]
+      },
+      options: {
+        responsive: true,
+        plugins: {
+          legend: { position: 'bottom' },
+          tooltip: {
+            callbacks: {
+              label: ctx => ` ${ctx.label}: ${ctx.parsed.toLocaleString()}개`
+            }
+          }
+        }
+      }
+    });
   }
 }
 
@@ -211,7 +296,7 @@ async function loadStats() {
 // 탭 전환
 // ════════════════════════════════════════════════════════════════════════════
 function switchTab(name) {
-  ['users', 'places', 'notifications', 'bookmarks'].forEach(t => {
+  ['stats', 'users', 'places', 'notifications', 'bookmarks'].forEach(t => {
     document.getElementById(`tab-${t}`).classList.toggle('hidden', t !== name);
     const btn = document.getElementById(`tab-btn-${t}`);
     if (t === name) {
@@ -222,7 +307,8 @@ function switchTab(name) {
       btn.classList.add('text-gray-400', 'border-transparent', 'font-medium');
     }
   });
-  if (name === 'places'        && allPlaces.length        === 0) loadDbPlaces();
+  if (name === 'users'         && allUsers.length          === 0) loadUsers();
+  if (name === 'places'        && allPlaces.length         === 0) loadDbPlaces();
   if (name === 'notifications' && allNotifications.length  === 0) loadNotifications();
   if (name === 'bookmarks'     && allBookmarks.length      === 0) loadBookmarks();
 }
@@ -289,7 +375,6 @@ function renderUsersTable(users) {
           보기
         </button>
       </td>
-      <td class="px-4 py-3 text-gray-400">${fmtDate(u.createdAt)}</td>
       <td class="px-4 py-3" onclick="event.stopPropagation()">
         <button onclick="deleteUser(${u.id}, '${escJs(u.email)}')"
                 class="bg-red-500 hover:bg-red-600 text-white text-xs px-3 py-1 rounded transition">

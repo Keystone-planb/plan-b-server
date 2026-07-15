@@ -250,11 +250,12 @@ public class AdminService {
         long totalNotifications = adminNotificationRepository.count();
         long unsentNotifications= adminNotificationRepository.countByPushSentAtIsNull();
         long totalBookmarks     = bookmarkRepository.count();
+        long totalPreferences   = userPreferenceRepository.count();
         return new AdminStatsDto(
                 totalUsers, totalTrips,
                 totalPlaces, analyzedPlaces,
                 totalNotifications, unsentNotifications,
-                totalBookmarks);
+                totalBookmarks, totalPreferences);
     }
 
     // ── 날씨 알림 수동 재발송 ──────────────────────────────────────────────
@@ -448,7 +449,8 @@ public class AdminService {
             long analyzedPlaces,
             long totalNotifications,
             long unsentNotifications,
-            long totalBookmarks
+            long totalBookmarks,
+            long totalPreferences
     ) {}
 
     /** 즐겨찾기 관리 DTO */

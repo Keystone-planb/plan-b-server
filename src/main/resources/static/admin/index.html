@@ -5,6 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Plan B Admin</title>
   <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
   <style>
     /* 셀 전체 보기 커서 */
     .expandable { cursor: pointer; }
@@ -159,11 +160,60 @@
               class="tab-btn px-5 py-3 font-medium text-gray-400 hover:text-gray-700 text-sm border-b-2 border-transparent transition">
         즐겨찾기 관리
       </button>
+      <button onclick="switchTab('stats')" id="tab-btn-stats"
+              class="tab-btn px-5 py-3 font-medium text-gray-400 hover:text-gray-700 text-sm border-b-2 border-transparent transition">
+        데이터 수치
+      </button>
     </div>
   </div>
 
   <!-- 본문 -->
   <main class="flex-1 max-w-screen-2xl mx-auto w-full px-6 py-6 space-y-6">
+
+    <!-- ══════════ 대시보드 탭 ══════════ -->
+    <div id="tab-stats" class="space-y-6">
+
+      <!-- 핵심 지표 카드 4개 -->
+      <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
+        <div class="bg-white rounded-xl shadow-sm p-5 border-l-4 border-indigo-400">
+          <div class="text-xs text-gray-400 mb-1">가입 유저수</div>
+          <div id="chart-stat-users" class="text-3xl font-bold text-gray-800">—</div>
+          <div class="text-xs text-gray-400 mt-1">누적 가입자</div>
+        </div>
+        <div class="bg-white rounded-xl shadow-sm p-5 border-l-4 border-blue-400">
+          <div class="text-xs text-gray-400 mb-1">여행 생성 횟수</div>
+          <div id="chart-stat-trips" class="text-3xl font-bold text-gray-800">—</div>
+          <div class="text-xs text-gray-400 mt-1">누적 생성 여행</div>
+        </div>
+        <div class="bg-white rounded-xl shadow-sm p-5 border-l-4 border-green-400">
+          <div class="text-xs text-gray-400 mb-1">AI 분석 장소수</div>
+          <div id="chart-stat-places" class="text-3xl font-bold text-gray-800">—</div>
+          <div class="text-xs text-gray-400 mt-1">누적 탐색 장소</div>
+        </div>
+        <div class="bg-white rounded-xl shadow-sm p-5 border-l-4 border-pink-400">
+          <div class="text-xs text-gray-400 mb-1">취향 DNA 학습</div>
+          <div id="chart-stat-prefs" class="text-3xl font-bold text-gray-800">—</div>
+          <div class="text-xs text-gray-400 mt-1">누적 학습 데이터</div>
+        </div>
+      </div>
+
+      <!-- 차트 2개 -->
+      <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+
+        <!-- 전체 현황 바 차트 -->
+        <div class="bg-white rounded-xl shadow-sm p-5">
+          <div class="font-bold text-sm text-gray-700 mb-4">전체 서비스 현황</div>
+          <canvas id="chart-bar" height="220"></canvas>
+        </div>
+
+        <!-- 장소 분석 도넛 차트 -->
+        <div class="bg-white rounded-xl shadow-sm p-5">
+          <div class="font-bold text-sm text-gray-700 mb-4">AI 장소 분석 현황</div>
+          <canvas id="chart-doughnut" height="220"></canvas>
+        </div>
+      </div>
+
+    </div><!-- /tab-stats -->
 
     <!-- ══════════ 사용자 관리 탭 ══════════ -->
     <div id="tab-users">
@@ -194,7 +244,6 @@
                 <th class="px-4 py-3 text-left">가입방법</th>
                 <th class="px-4 py-3 text-left">상태</th>
                 <th class="px-4 py-3 text-left">여행 선호 스타일</th>
-                <th class="px-4 py-3 text-left">가입일</th>
                 <th class="px-4 py-3 text-left">액션</th>
               </tr>
             </thead>
