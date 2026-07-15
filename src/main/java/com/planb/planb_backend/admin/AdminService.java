@@ -526,6 +526,45 @@ public class AdminService {
             long totalPreferences
     ) {}
 
+    // ── 취향 DNA 분석 통계 ────────────────────────────────────────────────
+    @Transactional(readOnly = true)
+    public AdminDnaStatsDto getDnaStats() {
+        long totalPreferences = userPreferenceRepository.count();
+        List<Object[]> rows   = userPreferenceRepository.findMoodStats();
+
+        List<MoodStatDto> moodStats = rows.stream().map(row -> {
+            String mood      = ((com.planb.planb_backend.domain.trip.entity.Mood) row[0]).name();
+            double avgScore  = row[1] == null ? 0.0 : Math.round(((Number) row[1]).doubleValue() * 100.0) / 100.0;
+            long   userCount = row[2] == null ? 0L  : ((Number) row[2]).longValue();
+            long   positive  = row[3] == null ? 0L  : ((Number) row[3]).longValue();
+            long   negative  = row[4] == null ? 0L  : ((Number) row[4]).longValue();
+            return new MoodStatDto(mood, avgScore, userCount, positive, negative);
+        }).toList();
+
+        String topMood = moodStats.stream()
+                .max(Comparator.comparingDouble(MoodStatDto::avgScore))
+                .map(MoodStatDto::mood)
+                .orElse(null);
+
+        return new AdminDnaStatsDto(totalPreferences, topMood, moodStats);
+    }
+
+    /** 취향 DNA 분석 DTO */
+    public record AdminDnaStatsDto(
+            long totalPreferences,
+            String topMood,
+            List<MoodStatDto> moodStats
+    ) {}
+
+    /** Mood 단위 집계 */
+    public record MoodStatDto(
+            String mood,
+            double avgScore,
+            long   userCount,
+            long   positive,
+            long   negative
+    ) {}
+
     /** 데이터 수치 탭 시계열 DTO */
     public record AdminTimeSeriesDto(
             List<String> labels,         // 14일 날짜 레이블

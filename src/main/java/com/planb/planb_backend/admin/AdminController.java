@@ -43,6 +43,12 @@ public class AdminController {
         return ResponseEntity.ok(adminService.getTimeSeries());
     }
 
+    @Operation(summary = "취향 DNA 분석 통계 조회 (Mood별 선호도 집계)")
+    @GetMapping("/stats/dna")
+    public ResponseEntity<AdminService.AdminDnaStatsDto> getDnaStats() {
+        return ResponseEntity.ok(adminService.getDnaStats());
+    }
+
     // ── 사용자 관리 ─────────────────────────────────────────────────────────
 
     @Operation(summary = "전체 사용자 목록 조회 (페이지네이션)")

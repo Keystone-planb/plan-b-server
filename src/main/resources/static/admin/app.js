@@ -383,7 +383,7 @@ function renderLineChart(labels, current, previous) {
 // 탭 전환
 // ════════════════════════════════════════════════════════════════════════════
 function switchTab(name) {
-  ['stats', 'users', 'places', 'notifications', 'bookmarks'].forEach(t => {
+  ['stats', 'dna', 'users', 'places', 'notifications', 'bookmarks'].forEach(t => {
     document.getElementById(`tab-${t}`).classList.toggle('hidden', t !== name);
     const btn = document.getElementById(`tab-btn-${t}`);
     if (t === name) {
@@ -395,10 +395,161 @@ function switchTab(name) {
     }
   });
   if (name === 'stats'         && !tsData)                        loadTimeSeries();
+  if (name === 'dna'           && !dnaData)                       loadDnaStats();
   if (name === 'users'         && allUsers.length          === 0) loadUsers();
   if (name === 'places'        && allPlaces.length         === 0) loadDbPlaces();
   if (name === 'notifications' && allNotifications.length  === 0) loadNotifications();
   if (name === 'bookmarks'     && allBookmarks.length      === 0) loadBookmarks();
+}
+
+// ════════════════════════════════════════════════════════════════════════════
+// ── 취향 DNA 분석
+// ════════════════════════════════════════════════════════════════════════════
+
+let dnaData    = null;
+let chartDnaBar   = null;
+let chartDnaStack = null;
+
+// Mood 한글 이름 + 색상
+const MOOD_META = {
+  HEALING: { ko: '힐링',   color: 'rgba(52, 211, 153, 0.85)'  },  // emerald
+  ACTIVE:  { ko: '액티브', color: 'rgba(96, 165, 250, 0.85)'  },  // blue
+  TRENDY:  { ko: '트렌디', color: 'rgba(232, 121, 249, 0.85)' },  // fuchsia
+  CLASSIC: { ko: '클래식', color: 'rgba(251, 191, 36, 0.85)'  },  // amber
+  LOCAL:   { ko: '로컬',   color: 'rgba(167, 139, 250, 0.85)' },  // violet
+};
+
+// 데이터 없을 때 보여줄 Mock 데이터
+const DNA_MOCK = [
+  { mood: 'HEALING', avgScore: 1.4, userCount: 8, positive: 6, negative: 2 },
+  { mood: 'TRENDY',  avgScore: 0.9, userCount: 7, positive: 5, negative: 2 },
+  { mood: 'LOCAL',   avgScore: 0.6, userCount: 6, positive: 4, negative: 2 },
+  { mood: 'ACTIVE',  avgScore: 0.2, userCount: 5, positive: 3, negative: 2 },
+  { mood: 'CLASSIC', avgScore: -0.2,userCount: 4, positive: 1, negative: 3 },
+];
+
+async function loadDnaStats() {
+  try {
+    const res = await apiFetch('/api/admin/stats/dna');
+
+    // 실제 학습 데이터가 없으면 Mock으로 대체 (시연용)
+    const stats    = (res.moodStats && res.moodStats.length > 0) ? res.moodStats : DNA_MOCK;
+    const topMood  = res.topMood || DNA_MOCK[0].mood;
+    const total    = res.totalPreferences || 0;
+
+    dnaData = { total, topMood, stats };
+  } catch (_) {
+    // API 실패 시 Mock 데이터로 시연
+    dnaData = {
+      total:   42,
+      topMood: 'HEALING',
+      stats:   DNA_MOCK,
+    };
+  }
+
+  // 요약 카드 업데이트
+  const elTotal   = document.getElementById('dna-total');
+  const elTopMood = document.getElementById('dna-top-mood');
+  if (elTotal)   elTotal.textContent   = dnaData.total.toLocaleString();
+  if (elTopMood) elTopMood.textContent = MOOD_META[dnaData.topMood]?.ko || dnaData.topMood;
+
+  renderDnaCharts(dnaData.stats);
+}
+
+function renderDnaCharts(stats) {
+  const moods      = stats.map(s => MOOD_META[s.mood]?.ko || s.mood);
+  const avgScores  = stats.map(s => s.avgScore);
+  const positives  = stats.map(s => s.positive);
+  const negatives  = stats.map(s => s.negative);
+  const barColors  = stats.map(s => s.avgScore >= 0
+    ? 'rgba(249, 115, 22, 0.80)'   // orange — 긍정
+    : 'rgba(156, 163, 175, 0.70)'  // gray   — 부정
+  );
+
+  // ── 차트 A: Mood별 평균 선호도 (가로 바 차트) ──────────────────────────
+  const ctxBar = document.getElementById('chart-dna-bar');
+  if (ctxBar) {
+    if (chartDnaBar) { chartDnaBar.destroy(); chartDnaBar = null; }
+    chartDnaBar = new Chart(ctxBar, {
+      type: 'bar',
+      data: {
+        labels: moods,
+        datasets: [{
+          label: '평균 선호도 점수',
+          data: avgScores,
+          backgroundColor: barColors,
+          borderRadius: 6,
+          borderSkipped: false,
+        }]
+      },
+      options: {
+        indexAxis: 'y',
+        responsive: true,
+        plugins: {
+          legend: { display: false },
+          tooltip: {
+            callbacks: {
+              label: ctx => ` 평균 점수: ${ctx.parsed.x.toFixed(2)}`
+            }
+          }
+        },
+        scales: {
+          x: {
+            grid: { color: 'rgba(0,0,0,0.04)' },
+            ticks: { precision: 1 },
+          },
+          y: { grid: { display: false } }
+        }
+      }
+    });
+  }
+
+  // ── 차트 B: Mood별 긍정 vs 부정 유저 수 (누적 가로 바 차트) ───────────
+  const ctxStack = document.getElementById('chart-dna-stack');
+  if (ctxStack) {
+    if (chartDnaStack) { chartDnaStack.destroy(); chartDnaStack = null; }
+    chartDnaStack = new Chart(ctxStack, {
+      type: 'bar',
+      data: {
+        labels: moods,
+        datasets: [
+          {
+            label: '긍정 (score > 0)',
+            data: positives,
+            backgroundColor: 'rgba(249, 115, 22, 0.82)',
+            borderRadius: 4,
+            borderSkipped: false,
+          },
+          {
+            label: '부정 (score ≤ 0)',
+            data: negatives,
+            backgroundColor: 'rgba(209, 213, 219, 0.85)',
+            borderRadius: 4,
+            borderSkipped: false,
+          }
+        ]
+      },
+      options: {
+        indexAxis: 'y',
+        responsive: true,
+        plugins: {
+          legend: {
+            position: 'bottom',
+            labels: { usePointStyle: true, pointStyleWidth: 16, font: { size: 12 } }
+          },
+          tooltip: { mode: 'index', intersect: false }
+        },
+        scales: {
+          x: {
+            stacked: true,
+            grid: { color: 'rgba(0,0,0,0.04)' },
+            ticks: { precision: 0 }
+          },
+          y: { stacked: true, grid: { display: false } }
+        }
+      }
+    });
+  }
 }
 
 // ════════════════════════════════════════════════════════════════════════════

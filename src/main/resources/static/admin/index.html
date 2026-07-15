@@ -164,6 +164,10 @@
               class="tab-btn px-5 py-3 font-medium text-gray-400 hover:text-gray-700 text-sm border-b-2 border-transparent transition">
         데이터 수치
       </button>
+      <button onclick="switchTab('dna')" id="tab-btn-dna"
+              class="tab-btn px-5 py-3 font-medium text-gray-400 hover:text-gray-700 text-sm border-b-2 border-transparent transition">
+        취향 DNA 분석
+      </button>
     </div>
   </div>
 
@@ -246,6 +250,78 @@
       </div>
 
     </div><!-- /tab-stats -->
+
+    <!-- ══════════ 취향 DNA 분석 탭 ══════════ -->
+    <div id="tab-dna" class="space-y-5">
+
+      <!-- 상단: 요약 카드 3개 -->
+      <div class="grid grid-cols-3 gap-4">
+
+        <!-- 카드 1: 전체 학습 데이터 -->
+        <div class="bg-white rounded-xl shadow-sm p-5 flex items-center gap-4">
+          <div class="w-11 h-11 rounded-full bg-orange-50 flex items-center justify-center flex-shrink-0">
+            <svg class="w-6 h-6 text-orange-400" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0"/>
+            </svg>
+          </div>
+          <div>
+            <div class="text-xs text-gray-400 mb-0.5">전체 학습된 취향 데이터</div>
+            <div id="dna-total" class="text-2xl font-bold text-orange-500">—</div>
+            <div class="text-xs text-gray-400 mt-0.5">총 건</div>
+          </div>
+        </div>
+
+        <!-- 카드 2: 평균 추천 수용률 -->
+        <div class="bg-white rounded-xl shadow-sm p-5 flex items-center gap-4">
+          <div class="w-11 h-11 rounded-full bg-orange-50 flex items-center justify-center flex-shrink-0">
+            <svg class="w-6 h-6 text-orange-400" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2H5a2 2 0 00-2 2v0"/>
+              <path stroke-linecap="round" stroke-linejoin="round" d="M8 7V5a2 2 0 012-2h4a2 2 0 012 2v2"/>
+            </svg>
+          </div>
+          <div>
+            <div class="text-xs text-gray-400 mb-0.5">평균 추천 수용률</div>
+            <div class="text-2xl font-bold text-orange-300">측정 중</div>
+            <div class="text-xs text-gray-400 mt-0.5">API 연동 대기</div>
+          </div>
+        </div>
+
+        <!-- 카드 3: 가장 인기 있는 Mood -->
+        <div class="bg-white rounded-xl shadow-sm p-5 flex items-center gap-4">
+          <div class="w-11 h-11 rounded-full bg-orange-50 flex items-center justify-center flex-shrink-0">
+            <svg class="w-6 h-6 text-orange-400" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/>
+            </svg>
+          </div>
+          <div>
+            <div class="text-xs text-gray-400 mb-0.5">가장 인기 있는 Mood</div>
+            <div id="dna-top-mood" class="text-2xl font-bold text-orange-500">—</div>
+            <div class="text-xs text-gray-400 mt-0.5">최고 평균 선호도</div>
+          </div>
+        </div>
+
+      </div>
+
+      <!-- 하단: 차트 2개 -->
+      <div class="grid grid-cols-2 gap-5">
+
+        <!-- 차트 A: Mood별 평균 선호도 점수 (가로 바 차트) -->
+        <div class="bg-white rounded-xl shadow-sm p-5">
+          <div class="font-bold text-sm text-gray-700 mb-1">Mood별 누적 선호도</div>
+          <div class="text-xs text-gray-400 mb-4">AI 추천 선택 시 +1.0 / 미선택 시 −0.3 누적 평균값</div>
+          <canvas id="chart-dna-bar" height="220"></canvas>
+        </div>
+
+        <!-- 차트 B: Mood별 긍정 vs 부정 유저 비율 (누적 가로 바 차트) -->
+        <div class="bg-white rounded-xl shadow-sm p-5">
+          <div class="font-bold text-sm text-gray-700 mb-1">Mood별 긍정 · 부정 유저 비율</div>
+          <div class="text-xs text-gray-400 mb-4">score &gt; 0 긍정(오렌지) vs score ≤ 0 부정(회색)</div>
+          <canvas id="chart-dna-stack" height="220"></canvas>
+        </div>
+
+      </div>
+
+    </div><!-- /tab-dna -->
 
     <!-- ══════════ 사용자 관리 탭 ══════════ -->
     <div id="tab-users">
