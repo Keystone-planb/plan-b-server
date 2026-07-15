@@ -243,7 +243,14 @@ async function loadTimeSeries() {
     }
 
     switchTsTab(activeTsTab);
-  } catch (_) {}
+  } catch (err) {
+    console.error('[loadTimeSeries] 시계열 데이터 로드 실패:', err);
+    // 차트 영역에 에러 안내 표시
+    const noData = document.getElementById('ts-no-data');
+    const wrap   = document.getElementById('ts-chart-wrap');
+    if (noData) { noData.textContent = '데이터를 불러오지 못했습니다. 서버 연결을 확인해 주세요.'; noData.classList.remove('hidden'); }
+    if (wrap)   wrap.classList.add('hidden');
+  }
 }
 
 function setTsTab(key, value, growth) {

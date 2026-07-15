@@ -307,8 +307,16 @@ public class AdminService {
     private Map<LocalDate, Long> toDateMap(List<Object[]> rows) {
         Map<LocalDate, Long> map = new HashMap<>();
         for (Object[] row : rows) {
-            LocalDate d   = ((java.sql.Date) row[0]).toLocalDate();
-            long      cnt = ((Number) row[1]).longValue();
+            if (row[0] == null) continue;
+            LocalDate d;
+            if (row[0] instanceof java.sql.Date sqlDate) {
+                d = sqlDate.toLocalDate();
+            } else if (row[0] instanceof LocalDate localDate) {
+                d = localDate;
+            } else {
+                d = LocalDate.parse(row[0].toString());
+            }
+            long cnt = row[1] == null ? 0L : ((Number) row[1]).longValue();
             map.put(d, cnt);
         }
         return map;
