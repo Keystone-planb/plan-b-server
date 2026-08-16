@@ -74,6 +74,18 @@
 
 ---
 
+## 추가 최적화 — 여행 목록(`GET /api/trips`) N+1 제거
+
+### 원인 분석
+- `TripListResponse.from(trip)`이 `trip.getItineraries().stream().mapToInt(it -> it.getPlaces().size())`로 장소 개수를 셌는데, `getPlaces()`가 lazy 컬렉션이라 **이티너리 1개당 SELECT 쿼리 1번**씩 발생
+- 여행 T개 × 일차 D개 구조라 최악의 경우 T×D번 쿼리가 추가로 나가는 전형적 N+1. `GET /api/trips`는 앱 첫 화면(여행 목록)에서 항상 호출되는 API라 영향 범위가 큼
+
+### 원인 해결
+- `TripPlaceRepository`에 `countByItineraryIds(List<Long>)` 추가 — `itinerary_id IN (...)` + `GROUP BY`로 전체 개수를 한 번에 집계
+- `TripService.getMyTrips()`: 조회된 모든 trip의 itineraryId를 모아 위 쿼리 1회 호출 → `Map<Long,Integer>`로 만들어 각 trip에 개수 매핑
+- `TripListResponse.from(trip, placeCount)`으로 시그니처 변경 — lazy 컬렉션을 더 이상 서비스 계층 밖에서 직접 건드리지 않음
+- **검증**: `show-sql`로 실제 쿼리 로그 확인 — trip_places를 향한 쿼리가 이티너리 개수와 무관하게 **정확히 1번**(GROUP BY, IN절에 전체 itineraryId 포함)만 실행됨을 확인
+
 ## 변경된 파일
 - `build.gradle` — `micrometer-registry-prometheus` 추가
 - `application-local.yml` — `management.endpoints.web.exposure.include: health, prometheus` (local 전용)
@@ -82,5 +94,7 @@
 - `src/main/java/.../domain/place/service/PlaceService.java` — `@Cacheable` 적용
 - `src/main/java/.../domain/place/dto/PlaceAnalysisStatusResponse.java`, `PlaceSummaryResponse.java` — `@NoArgsConstructor`/`@AllArgsConstructor` 추가 (Redis 역직렬화 버그 수정)
 - `src/main/java/.../domain/place/service/external/PlaceAnalysisService.java` — `evictPlaceDetailCache()` → `evictPlaceCaches()`로 확장, 분석 완료/fallback/재분석 시점에 `placeAnalysisStatus`·`placeSummary` 캐시도 함께 무효화
+- `src/main/java/.../domain/trip/repository/TripPlaceRepository.java` — `countByItineraryIds()` 배치 집계 쿼리 추가
+- `src/main/java/.../domain/trip/dto/TripListResponse.java`, `TripService.java` — 여행 목록 조회 N+1 제거 (`GET /api/trips`)
 - `monitoring/prometheus.yml`, `monitoring/grafana/provisioning/` — 로컬 APM 스택 설정
 - `k6/db-load-test.js` — 부하테스트 스크립트

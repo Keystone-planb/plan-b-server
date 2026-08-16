@@ -89,14 +89,36 @@ public class TripService {
         User user = findUser(email);
         LocalDate today = LocalDate.now();
 
-        return tripRepository.findByUserWithItineraries(user)
+        List<Trip> trips = tripRepository.findByUserWithItineraries(user)
                 .stream()
                 .filter(trip -> switch (status.toUpperCase()) {
                     case "UPCOMING" -> today.isBefore(trip.getStartDate());
                     case "PAST"     -> today.isAfter(trip.getEndDate());
                     default         -> true;
                 })
-                .map(TripListResponse::from)
+                .toList();
+
+        // itinerary.getPlaces()를 여기서 바로 쓰면 이티너리마다 lazy 쿼리가 하나씩 나가는 N+1이 됨
+        // → 전체 itineraryId를 모아 GROUP BY 쿼리 1회로 장소 개수를 미리 집계
+        List<Long> itineraryIds = trips.stream()
+                .flatMap(trip -> trip.getItineraries().stream())
+                .map(Itinerary::getItineraryId)
+                .toList();
+
+        Map<Long, Integer> placeCountByItineraryId = tripPlaceRepository.countByItineraryIds(itineraryIds)
+                .stream()
+                .collect(Collectors.toMap(
+                        row -> (Long) row[0],
+                        row -> ((Long) row[1]).intValue()
+                ));
+
+        return trips.stream()
+                .map(trip -> {
+                    int placeCount = trip.getItineraries().stream()
+                            .mapToInt(it -> placeCountByItineraryId.getOrDefault(it.getItineraryId(), 0))
+                            .sum();
+                    return TripListResponse.from(trip, placeCount);
+                })
                 .toList();
     }
 

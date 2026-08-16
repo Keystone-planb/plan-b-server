@@ -108,4 +108,14 @@ public interface TripPlaceRepository extends JpaRepository<TripPlace, Long> {
     List<TripPlace> findPrecedingInItinerary(@Param("itineraryId") Long itineraryId,
                                              @Param("visitOrder") int visitOrder);
 
+    /**
+     * [여행 목록 조회 최적화] itinerary별 장소 개수를 한 번의 쿼리로 집계
+     * TripListResponse.from()에서 itinerary.getPlaces().size()를 이티너리마다 lazy 조회하던
+     * N+1(여행 T개 × 일차 D개 = T*D회 쿼리)을 GROUP BY 쿼리 1회로 대체하기 위함
+     */
+    @Query("SELECT tp.itinerary.itineraryId, COUNT(tp) FROM TripPlace tp " +
+           "WHERE tp.itinerary.itineraryId IN :itineraryIds " +
+           "GROUP BY tp.itinerary.itineraryId")
+    List<Object[]> countByItineraryIds(@Param("itineraryIds") List<Long> itineraryIds);
+
 }
