@@ -46,9 +46,9 @@ jobs:
       - name: Grant execute permission for gradlew
         run: chmod +x gradlew
 
-      # ── 4. JAR 빌드 (테스트 제외 — 테스트는 별도 단계에서)
+      # ── 4. JAR 빌드 (테스트 포함 — 실패 시 배포 중단)
       - name: Build JAR
-        run: ./gradlew build -x test --no-daemon
+        run: ./gradlew build --no-daemon
 
       # ── 5. AWS 자격증명 설정
       - name: Configure AWS Credentials
