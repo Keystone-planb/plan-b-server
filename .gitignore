@@ -51,3 +51,7 @@ CLAUDE.md
 Progress.md
 .claude/
 docs/
+
+# 로컬 Redis 스냅샷 (로컬 부하테스트용, 커밋 대상 아님)
+dump.rdb
+*.rdb
