@@ -8,6 +8,17 @@ on:
 jobs:
   build-and-deploy:
     runs-on: ubuntu-latest
+    # 테스트 중 PlaceAnalysisConcurrencyTest 등 실제 Redis 연결이 필요한 테스트용
+    services:
+      redis:
+        image: redis:7
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
     env:
       FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
