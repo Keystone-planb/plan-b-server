@@ -5,7 +5,7 @@ import com.planb.planb_backend.domain.notification.repository.NotificationReposi
 import com.planb.planb_backend.domain.place.entity.Place;
 import com.planb.planb_backend.domain.place.repository.PlaceRepository;
 import com.planb.planb_backend.domain.preference.service.PreferenceService;
-import com.planb.planb_backend.domain.trip.dto.AddLocationResponse;
+import com.planb.planb_backend.domain.recommendation.dto.UnifiedReplaceResponse;
 import com.planb.planb_backend.domain.trip.entity.TripPlace;
 import com.planb.planb_backend.domain.trip.repository.TripPlaceRepository;
 import com.planb.planb_backend.domain.user.entity.Role;
@@ -83,7 +83,7 @@ class NotificationServiceTest {
         when(placeRepository.findById(301L)).thenReturn(Optional.of(newPlace));
         when(tripPlaceRepository.save(any())).thenReturn(tripPlace);
 
-        AddLocationResponse result = notificationService.replacePlan(100L, 301L, "test@planb.com");
+        UnifiedReplaceResponse result = notificationService.replacePlan(100L, 301L, "test@planb.com");
 
         // 응답 확인 (null 아닌 것만 검증 — 메시지 필드 제거됨)
         assertThat(result).isNotNull();

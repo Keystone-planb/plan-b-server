@@ -23,6 +23,7 @@ import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.*;
 
 @ExtendWith(MockitoExtension.class)
@@ -49,22 +50,22 @@ class PreferenceServiceTest {
         Place activePlace  = placeWithMood(20L, Mood.ACTIVE);
         Place trendyPlace  = placeWithMood(30L, Mood.TRENDY);
 
-        when(placeRepository.findById(10L)).thenReturn(Optional.of(healingPlace));
-        when(placeRepository.findById(20L)).thenReturn(Optional.of(activePlace));
-        when(placeRepository.findById(30L)).thenReturn(Optional.of(trendyPlace));
+        when(placeRepository.findAllById(List.of(10L, 20L, 30L)))
+                .thenReturn(List.of(healingPlace, activePlace, trendyPlace));
 
         // 기존 이력 없음
-        when(userPreferenceRepository.findByUserIdAndMood(any(), any()))
-                .thenReturn(Optional.empty());
+        when(userPreferenceRepository.findByUserIdAndMoodIn(eq(userId), any()))
+                .thenReturn(List.of());
 
         // 20번(ACTIVE) 선택
         preferenceService.applyFeedback(userId, List.of(10L, 20L, 30L), 20L);
 
-        // save가 3회 호출됐는지 확인
-        ArgumentCaptor<UserPreference> captor = ArgumentCaptor.forClass(UserPreference.class);
-        verify(userPreferenceRepository, times(3)).save(captor.capture());
+        // saveAll이 mood 3개짜리 리스트로 1회 호출됐는지 확인
+        @SuppressWarnings("unchecked")
+        ArgumentCaptor<List<UserPreference>> captor = ArgumentCaptor.forClass(List.class);
+        verify(userPreferenceRepository).saveAll(captor.capture());
 
-        List<UserPreference> saved = captor.getAllValues();
+        List<UserPreference> saved = captor.getValue();
 
         // HEALING (-0.3), ACTIVE (+1.0), TRENDY (-0.3)
         UserPreference healingPref = saved.stream().filter(p -> p.getMood() == Mood.HEALING).findFirst().orElseThrow();
@@ -77,26 +78,27 @@ class PreferenceServiceTest {
     }
 
     @Test
-    @DisplayName("mood가 null인 장소는 피드백 스킵 (save 미호출)")
+    @DisplayName("mood가 null인 장소는 피드백 스킵 (saveAll 미호출)")
     void applyFeedback_nullMoodPlace_skipped() {
         Place noMoodPlace = new Place();
         noMoodPlace.setMood(null);
+        ReflectionTestUtils.setField(noMoodPlace, "id", 99L); // mood==null 분기를 실제로 타도록(id 매칭 필요)
 
-        when(placeRepository.findById(99L)).thenReturn(Optional.of(noMoodPlace));
+        when(placeRepository.findAllById(List.of(99L))).thenReturn(List.of(noMoodPlace));
 
         preferenceService.applyFeedback(1L, List.of(99L), 99L);
 
-        verify(userPreferenceRepository, never()).save(any());
+        verify(userPreferenceRepository, never()).saveAll(any());
     }
 
     @Test
     @DisplayName("존재하지 않는 placeId는 조용히 스킵")
     void applyFeedback_unknownPlace_skipped() {
-        when(placeRepository.findById(999L)).thenReturn(Optional.empty());
+        when(placeRepository.findAllById(List.of(999L))).thenReturn(List.of());
 
         preferenceService.applyFeedback(1L, List.of(999L), 999L);
 
-        verify(userPreferenceRepository, never()).save(any());
+        verify(userPreferenceRepository, never()).saveAll(any());
     }
 
     @Test
@@ -106,18 +108,20 @@ class PreferenceServiceTest {
         existing.setScore(3.0); // 기존 점수
 
         Place healingPlace = placeWithMood(10L, Mood.HEALING);
-        when(placeRepository.findById(10L)).thenReturn(Optional.of(healingPlace));
-        when(userPreferenceRepository.findByUserIdAndMood(1L, Mood.HEALING))
-                .thenReturn(Optional.of(existing));
+        when(placeRepository.findAllById(List.of(10L))).thenReturn(List.of(healingPlace));
+        when(userPreferenceRepository.findByUserIdAndMoodIn(eq(1L), any()))
+                .thenReturn(List.of(existing));
 
         // 선택됨 → +1.0
         preferenceService.applyFeedback(1L, List.of(10L), 10L);
 
-        ArgumentCaptor<UserPreference> captor = ArgumentCaptor.forClass(UserPreference.class);
-        verify(userPreferenceRepository).save(captor.capture());
+        @SuppressWarnings("unchecked")
+        ArgumentCaptor<List<UserPreference>> captor = ArgumentCaptor.forClass(List.class);
+        verify(userPreferenceRepository).saveAll(captor.capture());
 
         // 3.0 + 1.0 = 4.0
-        assertThat(captor.getValue().getScore()).isEqualTo(4.0);
+        assertThat(captor.getValue()).hasSize(1);
+        assertThat(captor.getValue().get(0).getScore()).isEqualTo(4.0);
     }
 
     // ──────────────────────────────────────────────────────
@@ -213,6 +217,9 @@ class PreferenceServiceTest {
         Place p = new Place();
         p.setName("테스트 장소 " + id);
         p.setMood(mood);
+        // applyFeedback()이 findAllById 결과를 Place::getId 기준으로 Map을 만들기 때문에
+        // (기존엔 findById 개별호출이라 id가 필요 없었음) 테스트 픽스처에도 id를 채워야 함
+        ReflectionTestUtils.setField(p, "id", id);
         return p;
     }
 }
