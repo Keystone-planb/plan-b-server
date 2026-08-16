@@ -362,10 +362,17 @@ public class TripService {
             String prevEndTime = tripPlace.getEndTime();
             TransportMode prevMode = Optional.ofNullable(tripPlace.getTransportMode()).orElse(tripMode);
 
+            // subsequent 순회 중 매번 findByGooglePlaceId를 호출하던 N+1 제거 →
+            // placeId를 모아 배치 조회 1회로 Map을 만들어두고 루프 안에서는 조회만 함
+            Map<String, Place> placeByGoogleId = placeRepository.findAllByGooglePlaceIdIn(
+                            subsequent.stream().map(TripPlace::getPlaceId).toList())
+                    .stream()
+                    .collect(Collectors.toMap(Place::getGooglePlaceId, p -> p));
+
             for (TripPlace curr : subsequent) {
                 if (curr.getVisitTime() == null || curr.getEndTime() == null) break;
 
-                Place currPlace = placeRepository.findByGooglePlaceId(curr.getPlaceId()).orElse(null);
+                Place currPlace = placeByGoogleId.get(curr.getPlaceId());
                 if (currPlace == null || currPlace.getLatitude() == null) break;
 
                 int travelMin = googlePlaceApiService.getTravelTimeMinutes(
@@ -744,13 +751,19 @@ public class TripService {
         // 교체된 장소의 구간 이동수단 (없으면 Trip 기본값)
         TransportMode prevMode = target.getTransportMode() != null ? target.getTransportMode() : tripMode;
 
+        // subsequentPlaces 순회 중 매번 findByGooglePlaceId를 호출하던 N+1 제거 (replaceTripPlace와 동일 패턴)
+        Map<String, Place> placeByGoogleId = placeRepository.findAllByGooglePlaceIdIn(
+                        subsequentPlaces.stream().map(TripPlace::getPlaceId).toList())
+                .stream()
+                .collect(Collectors.toMap(Place::getGooglePlaceId, p -> p));
+
         for (TripPlace curr : subsequentPlaces) {
             if (curr.getVisitTime() == null || curr.getEndTime() == null) {
                 log.info("[OptimizeConfirm] tripPlaceId={} 시간 미설정 → 이후 재계산 중단", curr.getTripPlaceId());
                 break;
             }
 
-            Place currPlace = placeRepository.findByGooglePlaceId(curr.getPlaceId()).orElse(null);
+            Place currPlace = placeByGoogleId.get(curr.getPlaceId());
             if (currPlace == null || currPlace.getLatitude() == null) {
                 log.warn("[OptimizeConfirm] tripPlaceId={} 좌표 없음 → 이후 재계산 중단", curr.getTripPlaceId());
                 break;

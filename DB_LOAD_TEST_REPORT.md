@@ -86,6 +86,17 @@
 - `TripListResponse.from(trip, placeCount)`으로 시그니처 변경 — lazy 컬렉션을 더 이상 서비스 계층 밖에서 직접 건드리지 않음
 - **검증**: `show-sql`로 실제 쿼리 로그 확인 — trip_places를 향한 쿼리가 이티너리 개수와 무관하게 **정확히 1번**(GROUP BY, IN절에 전체 itineraryId 포함)만 실행됨을 확인
 
+## 추가 최적화 — 장소 교체/재계산 로직의 반복 조회 제거
+
+### 원인 분석
+- `TripService.replaceTripPlace()`와 `TripService.recalculateByDistanceMatrix()`(confirmOptimize 경로) 둘 다 "이후 일정 목록을 순회하면서 각 장소를 `placeRepository.findByGooglePlaceId()`로 하나씩 조회" 하는 동일한 패턴 → 순회 대상이 N개면 쿼리도 N번
+- 같은 코드베이스 안에 이미 배치조회 메서드(`PlaceRepository.findAllByGooglePlaceIdIn`)가 존재하고 다른 곳(장소 추가 시 카테고리 조회 등)에서는 이미 쓰이고 있었는데, 이 두 곳만 개별조회로 남아있었음
+
+### 원인 해결
+- 루프 시작 전에 `subsequent`/`subsequentPlaces`의 placeId를 모아 `findAllByGooglePlaceIdIn()` 1회 호출 → `Map<String, Place>`로 변환
+- 루프 안에서는 DB 조회 대신 Map 조회(`placeByGoogleId.get(...)`)만 수행 — 기존의 null/좌표없음 체크 시 순회 중단(break)하는 로직은 그대로 유지
+- **참고**: 이 두 메서드는 여행 일정 데이터 + Google Distance Matrix API 호출이 얽혀있어, 이번 세션에서는 부하테스트로 실측 검증하지 못했음(외부 API 키 비활성 상태). 컴파일 확인 + 코드베이스에 이미 검증된 동일 패턴을 기계적으로 적용한 것으로 리스크를 낮게 판단
+
 ## 변경된 파일
 - `build.gradle` — `micrometer-registry-prometheus` 추가
 - `application-local.yml` — `management.endpoints.web.exposure.include: health, prometheus` (local 전용)
@@ -96,5 +107,6 @@
 - `src/main/java/.../domain/place/service/external/PlaceAnalysisService.java` — `evictPlaceDetailCache()` → `evictPlaceCaches()`로 확장, 분석 완료/fallback/재분석 시점에 `placeAnalysisStatus`·`placeSummary` 캐시도 함께 무효화
 - `src/main/java/.../domain/trip/repository/TripPlaceRepository.java` — `countByItineraryIds()` 배치 집계 쿼리 추가
 - `src/main/java/.../domain/trip/dto/TripListResponse.java`, `TripService.java` — 여행 목록 조회 N+1 제거 (`GET /api/trips`)
+- `src/main/java/.../domain/trip/service/TripService.java` — `replaceTripPlace()`, `recalculateByDistanceMatrix()`의 반복 `findByGooglePlaceId` 호출을 배치조회로 변경
 - `monitoring/prometheus.yml`, `monitoring/grafana/provisioning/` — 로컬 APM 스택 설정
 - `k6/db-load-test.js` — 부하테스트 스크립트
