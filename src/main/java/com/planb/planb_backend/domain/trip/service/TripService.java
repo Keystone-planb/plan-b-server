@@ -830,6 +830,16 @@ public class TripService {
             placeMap.put(tp.getTripPlaceId(), tp);
         }
 
+        // request.getPlaces() 순회 중 장소 교체 항목마다 findByGooglePlaceId를 호출하던 N+1 제거
+        // → 요청에 포함된 placeId를 모아 배치조회 1회로 기존 Place를 미리 인덱싱
+        List<String> requestedPlaceIds = request.getPlaces().stream()
+                .map(RecoveryConfirmRequest.PlaceItem::getPlaceId)
+                .filter(id -> id != null)
+                .toList();
+        Map<String, Place> existingPlaceByGoogleId = placeRepository.findAllByGooglePlaceIdIn(requestedPlaceIds)
+                .stream()
+                .collect(Collectors.toMap(Place::getGooglePlaceId, p -> p));
+
         int changedCount = 0;
         for (RecoveryConfirmRequest.PlaceItem item : request.getPlaces()) {
             TripPlace tp = placeMap.get(item.getTripPlaceId());
@@ -842,13 +852,12 @@ public class TripService {
                 tp.replace(item.getPlaceId(), item.getName());
 
                 if (item.getLatitude() != null && item.getLongitude() != null) {
-                    Place place = placeRepository.findByGooglePlaceId(item.getPlaceId())
-                            .orElseGet(() -> {
-                                Place p = new Place();
-                                p.setGooglePlaceId(item.getPlaceId());
-                                p.setName(item.getName());
-                                return p;
-                            });
+                    Place place = existingPlaceByGoogleId.getOrDefault(item.getPlaceId(), null);
+                    if (place == null) {
+                        place = new Place();
+                        place.setGooglePlaceId(item.getPlaceId());
+                        place.setName(item.getName());
+                    }
                     place.setLatitude(item.getLatitude());
                     place.setLongitude(item.getLongitude());
                     if (item.getCategory() != null) place.setCategory(item.getCategory());

@@ -97,6 +97,16 @@
 - 루프 안에서는 DB 조회 대신 Map 조회(`placeByGoogleId.get(...)`)만 수행 — 기존의 null/좌표없음 체크 시 순회 중단(break)하는 로직은 그대로 유지
 - **참고**: 이 두 메서드는 여행 일정 데이터 + Google Distance Matrix API 호출이 얽혀있어, 이번 세션에서는 부하테스트로 실측 검증하지 못했음(외부 API 키 비활성 상태). 컴파일 확인 + 코드베이스에 이미 검증된 동일 패턴을 기계적으로 적용한 것으로 리스크를 낮게 판단
 
+## 추가 최적화 — 여정 복구 확정(`confirmRecovery`)의 반복 upsert 조회 제거
+
+### 원인 분석
+- `confirmRecovery()`가 요청받은 장소 목록(`request.getPlaces()`)을 순회하면서, 장소가 교체된 항목마다 `placeRepository.findByGooglePlaceId()`로 기존 Place를 찾고 없으면 새로 만드는 upsert를 개별 수행 → 교체된 장소 수만큼 조회 쿼리 발생
+- 호출 빈도 자체는 앞의 두 건보다 낮지만(여정 복구 확정 시점에만) 동일한 반복조회 패턴이라 같이 정리
+
+### 원인 해결
+- 루프 진입 전 `request.getPlaces()`의 placeId를 모아 `findAllByGooglePlaceIdIn()` 1회로 기존 Place를 `Map<String, Place>`에 미리 인덱싱
+- 루프 안에서는 이 맵에서 조회하고, 없으면 기존과 동일하게 새 Place를 생성(create-if-missing 로직 그대로 유지) → 동작은 완전히 동일, 쿼리 횟수만 감소
+
 ## 변경된 파일
 - `build.gradle` — `micrometer-registry-prometheus` 추가
 - `application-local.yml` — `management.endpoints.web.exposure.include: health, prometheus` (local 전용)
