@@ -153,6 +153,18 @@
 - 결과적으로 **placeId나 mood 개수와 무관하게 항상 쿼리 3번**(장소 배치조회 + preference 배치조회 + 저장)으로 고정됨
 - **검증**: 실제 요청으로 로그 확인 — `place_id in (?)`, `mood in (?)`, `update` 딱 3줄만 실행됨. `/summary` 조회로 점수 반영도 확인
 
+## 추가 최적화 — 추천 엔진(`RecommendationService.upsertCandidates`) N+1 제거
+
+### 원인 분석
+- `upsertCandidates()`가 Google Nearby Search 결과(약 20개)를 순회하며 후보마다 `findByGooglePlaceId()` 개별 조회 → 요청 1번당 최대 20번의 읽기 쿼리
+- 이 메서드는 **동기 추천(`getRecommendations`)과 SSE 스트리밍 추천(`doStreamAsync`) 둘 다에서 재사용**되고, 결과가 부족해 반경을 확장하는 재시도 분기(STEP 5.5 / S7.5)에서 **한 번 더** 호출됨 → 실질적으로 요청 하나에 최대 40개 읽기 쿼리까지 발생 가능
+- `NotificationService.fetchLiveAlternatives()`, `GapRecommendationService` 등 여러 곳에서 이 엔진을 호출하기 때문에 한 곳만 고쳐도 여러 API에 동시에 이득이 있는 레버리지 높은 지점
+
+### 원인 해결
+- 후보 목록(`googleResults`)에서 이번 여행 중복 제외(`excludedIds`)를 먼저 걸러낸 뒤, 남은 googlePlaceId를 모아 `findAllByGooglePlaceIdIn()` 배치조회 1회로 기존 Place를 미리 인덱싱
+- 저장(`saveAndFlush`)은 **항목별로 그대로 유지** — 원래 코드가 항목마다 개별 try-catch로 감싸서 "한 후보 저장 실패가 나머지 후보까지 실패시키지 않도록" 격리한 의도가 있었기 때문에, 이 부분까지 `saveAll`로 묶으면 한 항목의 제약조건 위반 등으로 전체 배치가 실패할 위험이 생겨 그대로 둠. 읽기만 배치화해도 최대 20회 → 1회로 충분히 큰 개선
+- **한계**: 이 파이프라인은 Google Places API 실호출이 필요한데 현재 로컬 환경에서 외부 API 키가 꺼져있어 이번 세션에서는 실측 부하테스트로 검증하지 못했음. 컴파일 확인 + 코드베이스에 이미 검증된 동일 배치조회 패턴을 적용한 것으로 리스크를 낮게 판단
+
 ## 변경된 파일
 - `build.gradle` — `micrometer-registry-prometheus` 추가
 - `application-local.yml` — `management.endpoints.web.exposure.include: health, prometheus` (local 전용)
@@ -170,5 +182,6 @@
 - `src/main/java/.../domain/notification/service/NotificationService.java` — 알림 목록 N+1 제거, `recalculateSubsequentSchedules` 배치조회 전환
 - `src/main/java/.../domain/preference/repository/UserPreferenceRepository.java` — `findByUserIdAndMoodIn()` 배치조회 추가
 - `src/main/java/.../domain/preference/service/PreferenceService.java` — `applyFeedback()` N×3 쿼리를 고정 3쿼리로 축소
+- `src/main/java/.../domain/place/service/external/RecommendationService.java` — `upsertCandidates()` 반복 조회를 배치조회로 변경 (동기/SSE 추천 공통 경로)
 - `monitoring/prometheus.yml`, `monitoring/grafana/provisioning/` — 로컬 APM 스택 설정
 - `k6/db-load-test.js` — 부하테스트 스크립트

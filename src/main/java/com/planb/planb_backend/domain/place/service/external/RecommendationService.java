@@ -170,6 +170,18 @@ public class RecommendationService {
                                           Set<String> excludedIds) {
         List<Place> candidates = new ArrayList<>();
 
+        // Google Nearby Search 결과(약 20개)마다 findByGooglePlaceId를 개별 호출하던 N+1 제거.
+        // 이 메서드는 추천/틈새추천 요청마다 호출되고 반경 확장 재시도 시 두 번째로 또 실행되는
+        // 핫 패스라 영향이 큼. 쓰기(saveAndFlush)는 항목별 예외 격리를 유지하기 위해 그대로 둠 —
+        // 한 항목의 저장 실패가 다른 항목까지 실패시키지 않도록 하려는 기존 의도를 보존
+        List<String> gIds = googleResults.stream()
+                .map(result -> (String) result.get("place_id"))
+                .filter(id -> id != null && !excludedIds.contains(id))
+                .toList();
+        Map<String, Place> existingByGoogleId = placeRepository.findAllByGooglePlaceIdIn(gIds)
+                .stream()
+                .collect(Collectors.toMap(Place::getGooglePlaceId, p -> p));
+
         for (Map<String, Object> result : googleResults) {
             String gId = (String) result.get("place_id");
             if (gId == null) continue;
@@ -181,12 +193,11 @@ public class RecommendationService {
             }
 
             try {
-                Place place = placeRepository.findByGooglePlaceId(gId)
-                        .orElseGet(() -> {
-                            Place newPlace = new Place();
-                            newPlace.setGooglePlaceId(gId);
-                            return newPlace;
-                        });
+                Place place = existingByGoogleId.get(gId);
+                if (place == null) {
+                    place = new Place();
+                    place.setGooglePlaceId(gId);
+                }
 
                 updatePlaceInfo(place, result);
                 Place saved = placeRepository.saveAndFlush(place);
