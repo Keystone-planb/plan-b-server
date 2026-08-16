@@ -121,6 +121,24 @@
 - **또 같은 버그 발견**: `List<TripListResponse>`를 `@Cacheable` 반환값으로 그대로 캐싱했더니, 이번엔 (기본 생성자 문제가 아니라) Jackson이 최상위 제네릭 컬렉션의 타입 정보를 못 살려서 `Unexpected token (START_ARRAY), expected VALUE_STRING` 에러로 매번 캐시 조회가 조용히 실패함. `TripListCacheEntry`(List를 감싼 POJO 래퍼)로 한 번 감싸서 해결 — 컨트롤러 쪽 API 응답 형태(`List<TripListResponse>`)는 그대로 유지, 캐싱 레이어에서만 래핑/언래핑
 - **검증**: 응답시간 평균 1.35s→12.36ms(약 110배), p95 2.55s→4.9ms(약 520배), 처리량 16→116 req/s, HikariCP pending 최대 41건→9건(초반 동시 캐시미스 구간 제외하면 사실상 해소)
 
+## 추가 최적화 — 알림 목록(`GET /api/notifications/{userId}`) N+1 제거
+
+### 원인 분석
+- `getUnreadNotifications()`가 안읽은 알림 N개를 순회하며 각각 `findItineraryDateById()`로 만료 여부를 판단 → N번 쿼리
+- 만료되지 않은 알림은 `toResponse()`에서 **같은 planId를 또** `findByIdWithItineraryAndTrip()`으로 재조회(만료 판단 때 쓴 것과 별개 쿼리) → 알림당 추가 1번
+- 실시간 대안 탐색 분기(`fetchLiveAlternatives`)에서는 **같은 planId를 세 번째로** 재조회
+- fallback 대안 목록(최대 3개)도 `placeRepository.findById()`를 id마다 개별 호출
+- 최악의 경우 알림 N개에 대해 최대 `6N+1`번 쿼리가 나가는 구조. `GET /api/notifications/{userId}`는 날씨 알림 배지처럼 프론트가 주기적으로 폴링할 만한 API라 영향이 큼
+
+### 원인 해결
+- `TripPlaceRepository.findAllByIdInWithItineraryAndTrip()` 신규 추가 — IN절 + JOIN FETCH로 알림들의 TripPlace(+itinerary+trip)를 1번에 배치조회
+- `getUnreadNotifications()`: 이 배치조회 결과로 `Map<planId, TripPlace>` 생성 → 만료 여부 판단도 `findItineraryDateById` 없이 이미 로딩된 `itinerary.getDate()`로 즉시 처리
+- `toResponse(n, tripPlace)`로 시그니처 변경해 배치조회 결과를 그대로 전달 → 같은 planId 재조회 제거
+- `fetchLiveAlternatives(n, tp)`도 동일하게 tripPlace를 파라미터로 받아 세 번째 재조회 제거
+- fallback 대안 목록: `placeRepository.findAllById(altIds)`로 배치조회 후 Map 조회로 변경
+- **덤으로 발견**: `recalculateSubsequentSchedules()`(알림에서 장소 교체 시 이후 일정 재계산)에도 앞서 `TripService`에서 고쳤던 것과 동일한 `findByGooglePlaceId` 반복호출 패턴이 있어서 같이 배치조회로 변경
+- **검증**: 테스트 알림 시딩 후 실제 로그로 확인 — 이전엔 만료 판단마다 별도 쿼리가 나갔을 자리에, 이제는 IN절 배치 쿼리 1번(`trip_place_id in (?)`)만 실행되고 `itinerary.date`가 그 결과에서 바로 읽힘
+
 ## 변경된 파일
 - `build.gradle` — `micrometer-registry-prometheus` 추가
 - `application-local.yml` — `management.endpoints.web.exposure.include: health, prometheus` (local 전용)
@@ -134,5 +152,7 @@
 - `src/main/java/.../domain/trip/service/TripService.java` — `replaceTripPlace()`, `recalculateByDistanceMatrix()`의 반복 `findByGooglePlaceId` 호출을 배치조회로 변경
 - `src/main/java/.../domain/trip/dto/TripListCacheEntry.java` (신규) — `tripList` 캐시 직렬화용 래퍼
 - `src/main/java/.../domain/trip/service/TripService.java`, `TripController.java`, `RedisConfig.java` — `GET /api/trips` 캐싱 + 5개 지점 즉시 무효화
+- `src/main/java/.../domain/trip/repository/TripPlaceRepository.java` — `findAllByIdInWithItineraryAndTrip()` 배치조회 추가
+- `src/main/java/.../domain/notification/service/NotificationService.java` — 알림 목록 N+1 제거, `recalculateSubsequentSchedules` 배치조회 전환
 - `monitoring/prometheus.yml`, `monitoring/grafana/provisioning/` — 로컬 APM 스택 설정
 - `k6/db-load-test.js` — 부하테스트 스크립트

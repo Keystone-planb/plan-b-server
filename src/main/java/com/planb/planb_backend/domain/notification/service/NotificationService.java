@@ -76,11 +76,19 @@ public class NotificationService {
         List<Notification> unread = notificationRepository
                 .findByUserIdAndIsReadFalseOrderByCreatedAtDesc(userId);
 
+        // 알림 개수(N)만큼 findItineraryDateById + toResponse 안의 findByIdWithItineraryAndTrip이
+        // 반복 호출되던 N+1 제거 — planId를 모아 IN절 배치조회 1회로 TripPlace(itinerary 포함)를 미리 확보
+        List<Long> planIds = unread.stream().map(Notification::getPlanId).distinct().toList();
+        Map<Long, TripPlace> tripPlaceByPlanId = tripPlaceRepository.findAllByIdInWithItineraryAndTrip(planIds)
+                .stream()
+                .collect(Collectors.toMap(TripPlace::getTripPlaceId, tp -> tp));
+
         List<Notification> active  = new ArrayList<>();
         List<Notification> expired = new ArrayList<>();
 
         for (Notification n : unread) {
-            LocalDate visitDate = tripPlaceRepository.findItineraryDateById(n.getPlanId()).orElse(null);
+            TripPlace tp = tripPlaceByPlanId.get(n.getPlanId());
+            LocalDate visitDate = tp != null ? tp.getItinerary().getDate() : null;
             if (visitDate == null || visitDate.isBefore(today)) {
                 expired.add(n);
             } else {
@@ -96,15 +104,11 @@ public class NotificationService {
         }
 
         return active.stream()
-                .map(this::toResponse)
+                .map(n -> toResponse(n, tripPlaceByPlanId.get(n.getPlanId())))
                 .collect(Collectors.toList());
     }
 
-    private NotificationResponse toResponse(Notification n) {
-        // TripPlace 조회 — tripId, day, visitTime, endTime, originalPlace 모두 여기서 추출
-        // JOIN FETCH 로 itinerary + trip 즉시 로딩 → LazyInitializationException 방지
-        var tripPlace = tripPlaceRepository.findByIdWithItineraryAndTrip(n.getPlanId()).orElse(null);
-
+    private NotificationResponse toResponse(Notification n, TripPlace tripPlace) {
         Long   tripId    = null;
         Integer day      = null;
         String visitTime = null;
@@ -126,15 +130,18 @@ public class NotificationService {
         if (n.getOriginalLat() != null && n.getOriginalLng() != null) {
             // 실시간 근처 탐색 — 원래 장소 좌표 기반
             try {
-                alternatives = fetchLiveAlternatives(n);
+                alternatives = fetchLiveAlternatives(n, tripPlace);
             } catch (Exception e) {
                 log.warn("[Notification] 대안 장소 조회 실패 - notificationId={}: {}", n.getId(), e.getMessage());
                 alternatives = Collections.emptyList();
             }
         } else {
-            // fallback: pre-stored IDs
-            alternatives = parseAltIds(n.getAlternativePlaceIds()).stream()
-                    .map(id -> placeRepository.findById(id).orElse(null))
+            // fallback: pre-stored IDs — id별 개별 조회하던 걸 IN절 배치조회 1회로 대체
+            List<Long> altIds = parseAltIds(n.getAlternativePlaceIds());
+            Map<Long, Place> placeById = placeRepository.findAllById(altIds).stream()
+                    .collect(Collectors.toMap(Place::getId, p -> p));
+            alternatives = altIds.stream()
+                    .map(placeById::get)
                     .filter(java.util.Objects::nonNull)
                     .map(AlternativePlaceDto::from)
                     .collect(Collectors.toList());
@@ -162,9 +169,8 @@ public class NotificationService {
      * 비 오는 날씨 알림이므로 카테고리 무관하게 INDOOR/MIX 장소 우선 반환.
      * AI 분석 미완료(space=null) 장소는 후보로 포함해 결과 부족 방지.
      */
-    private List<AlternativePlaceDto> fetchLiveAlternatives(Notification n) {
-        // JOIN FETCH 로 itinerary + trip 즉시 로딩 → LazyInitializationException 방지
-        TripPlace tp = tripPlaceRepository.findByIdWithItineraryAndTrip(n.getPlanId()).orElse(null);
+    private List<AlternativePlaceDto> fetchLiveAlternatives(Notification n, TripPlace tp) {
+        // tp는 toResponse에서 이미 배치조회해둔 걸 재사용 — 여기서 같은 planId를 또 조회하던 중복 제거
 
         // 원래 장소 Google Place ID 조회 (명시적 제외용)
         String originalGooglePlaceId = tp != null ? tp.getPlaceId() : null;
@@ -354,7 +360,7 @@ public class NotificationService {
             }
         });
 
-        return toResponse(saved);
+        return toResponse(saved, tp);
     }
 
     // ───────────────────────────────────────────
@@ -401,10 +407,16 @@ public class NotificationService {
         String prevEndTime = replaced.getEndTime();
         TransportMode prevMode = Optional.ofNullable(replaced.getTransportMode()).orElse(tripMode);
 
+        // subsequent 순회 중 매번 findByGooglePlaceId를 호출하던 N+1 제거 (TripService의 동일 패턴과 통일)
+        Map<String, Place> placeByGoogleId = placeRepository.findAllByGooglePlaceIdIn(
+                        subsequent.stream().map(TripPlace::getPlaceId).toList())
+                .stream()
+                .collect(Collectors.toMap(Place::getGooglePlaceId, p -> p));
+
         for (TripPlace curr : subsequent) {
             if (curr.getVisitTime() == null || curr.getEndTime() == null) break;
 
-            Place currPlace = placeRepository.findByGooglePlaceId(curr.getPlaceId()).orElse(null);
+            Place currPlace = placeByGoogleId.get(curr.getPlaceId());
             if (currPlace == null || currPlace.getLatitude() == null) break;
 
             int travelMin = googlePlaceApiService.getTravelTimeMinutes(

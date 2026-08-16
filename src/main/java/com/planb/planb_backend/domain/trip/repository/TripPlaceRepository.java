@@ -76,6 +76,18 @@ public interface TripPlaceRepository extends JpaRepository<TripPlace, Long> {
     Optional<TripPlace> findByIdWithItineraryAndTrip(@Param("id") Long id);
 
     /**
+     * [알림 목록 최적화] findByIdWithItineraryAndTrip의 배치 버전
+     * NotificationService.getUnreadNotifications()에서 알림 개수만큼 반복 조회하던 걸
+     * 1회 IN절 쿼리로 대체하기 위함 (itinerary.date까지 즉시 로딩되므로
+     * 만료 여부 판단용 별도 findItineraryDateById 호출도 함께 제거 가능)
+     */
+    @Query("SELECT tp FROM TripPlace tp " +
+           "JOIN FETCH tp.itinerary i " +
+           "JOIN FETCH i.trip t " +
+           "WHERE tp.tripPlaceId IN :ids")
+    List<TripPlace> findAllByIdInWithItineraryAndTrip(@Param("ids") List<Long> ids);
+
+    /**
      * [기능 6 — 틈새 추천] 특정 여행의 모든 일정을 날짜·방문시간 오름차순으로 조회
      * visitOrder(추가 순서)가 아닌 visitTime(실제 방문 시간) 기준으로 정렬해야
      * 시간 역순으로 추가된 일정도 갭 계산이 올바르게 동작함.
