@@ -13,10 +13,12 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.util.ArrayList;
 import java.util.Comparator;
+import java.util.EnumMap;
 import java.util.List;
 import java.util.Map;
-import java.util.Optional;
+import java.util.stream.Collectors;
 
 @Slf4j
 @Service
@@ -43,17 +45,46 @@ public class PreferenceService {
             log.info("[Preference] shownPlaceIds 없음 — 피드백 스킵 (userId={})", userId);
             return;
         }
-        for (Long placeId : shownPlaceIds) {
-            Optional<Place> placeOpt = placeRepository.findById(placeId);
-            if (placeOpt.isEmpty()) continue;
 
-            Mood mood = placeOpt.get().getMood();
+        // 추천 노출마다(recommendations/stream, gaps/recommend/stream 등 핵심 추천 플로우에서
+        // 매번 호출됨) placeId마다 findById + findByUserIdAndMood + save를 반복하던 N×3 쿼리 제거
+        // → 장소는 IN절 배치조회 1회, mood는 최대 5종(enum 크기)뿐이라 mood별로 delta를 합산한 뒤
+        //   UserPreference도 배치조회 1회 + saveAll 1회로 처리
+        Map<Long, Place> placeById = placeRepository.findAllById(shownPlaceIds).stream()
+                .collect(Collectors.toMap(Place::getId, p -> p));
+
+        Map<Mood, Double> deltaByMood = new EnumMap<>(Mood.class);
+        for (Long placeId : shownPlaceIds) {
+            Place place = placeById.get(placeId);
+            if (place == null) continue;
+
+            Mood mood = place.getMood();
             if (mood == null) continue; // 미분석 장소 스킵
 
             double delta = placeId.equals(selectedPlaceId) ? SELECTED_DELTA : REJECTED_DELTA;
-            updateScore(userId, mood, delta);
+            deltaByMood.merge(mood, delta, Double::sum);
         }
-        log.info("[Preference] 피드백 완료 — userId={}, selected={}", userId, selectedPlaceId);
+
+        if (deltaByMood.isEmpty()) {
+            log.info("[Preference] 분석된 mood 없음 — 피드백 스킵 (userId={})", userId);
+            return;
+        }
+
+        Map<Mood, UserPreference> existing = userPreferenceRepository
+                .findByUserIdAndMoodIn(userId, new ArrayList<>(deltaByMood.keySet()))
+                .stream()
+                .collect(Collectors.toMap(UserPreference::getMood, p -> p));
+
+        List<UserPreference> toSave = new ArrayList<>();
+        deltaByMood.forEach((mood, delta) -> {
+            UserPreference pref = existing.getOrDefault(mood, new UserPreference(userId, mood));
+            pref.setScore(pref.getScore() + delta);
+            toSave.add(pref);
+        });
+        userPreferenceRepository.saveAll(toSave);
+
+        log.info("[Preference] 피드백 완료 — userId={}, selected={}, 반영된 mood 수={}",
+                userId, selectedPlaceId, deltaByMood.size());
     }
 
     /**
@@ -95,17 +126,6 @@ public class PreferenceService {
                 .hasEnoughData(true)
                 .message(message)
                 .build();
-    }
-
-    /** 누적 점수 업데이트 (없으면 신규 생성) */
-    private void updateScore(Long userId, Mood mood, double delta) {
-        UserPreference pref = userPreferenceRepository
-                .findByUserIdAndMood(userId, mood)
-                .orElseGet(() -> new UserPreference(userId, mood));
-
-        pref.setScore(pref.getScore() + delta);
-        userPreferenceRepository.save(pref);
-        log.debug("[Preference] userId={}, mood={}, delta={}, 누적={}", userId, mood, delta, pref.getScore());
     }
 
     private String toKorean(Mood mood) {

@@ -14,6 +14,9 @@ public interface UserPreferenceRepository extends JpaRepository<UserPreference, 
 
     List<UserPreference> findByUserId(Long userId);
 
+    /** [피드백 반영 최적화] mood별로 findByUserIdAndMood를 반복 호출하던 걸 배치조회로 대체 */
+    List<UserPreference> findByUserIdAndMoodIn(Long userId, List<Mood> moods);
+
     /** 어드민 DNA 분석: Mood별 평균점수·총 유저수·긍정·부정 집계 */
     @Query("SELECT up.mood, AVG(up.score), COUNT(up), " +
            "SUM(CASE WHEN up.score > 0 THEN 1 ELSE 0 END), " +

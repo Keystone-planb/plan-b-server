@@ -139,6 +139,20 @@
 - **덤으로 발견**: `recalculateSubsequentSchedules()`(알림에서 장소 교체 시 이후 일정 재계산)에도 앞서 `TripService`에서 고쳤던 것과 동일한 `findByGooglePlaceId` 반복호출 패턴이 있어서 같이 배치조회로 변경
 - **검증**: 테스트 알림 시딩 후 실제 로그로 확인 — 이전엔 만료 판단마다 별도 쿼리가 나갔을 자리에, 이제는 IN절 배치 쿼리 1번(`trip_place_id in (?)`)만 실행되고 `itinerary.date`가 그 결과에서 바로 읽힘
 
+## 추가 최적화 — 추천 피드백(`POST /api/preferences/feedback`) N+1 제거
+
+### 원인 분석
+- `applyFeedback()`이 노출된 장소 목록(`shownPlaceIds`, N개)을 순회하며 장소마다 `findById()` 1번 + `updateScore()` 내부의 `findByUserIdAndMood()` 1번 + `save()` 1번, 총 **장소당 최대 3번**(N×3) 쿼리를 실행
+- 이 API는 `/api/recommendations/stream`, `/gaps/recommend/stream` 같은 핵심 추천 플로우에서 **추천이 노출될 때마다** 호출되는 자주 쓰이는 엔드포인트라, "가끔 호출되는 부가기능"이 아니라 실제 영향이 큼
+
+### 원인 해결
+- 장소 조회: `placeRepository.findAllById(shownPlaceIds)`로 배치조회 1회 → `Map<placeId, Place>`
+- mood별 delta 합산: `Mood`는 5종(enum)뿐이라, 장소 하나하나 개별 업데이트하는 대신 **같은 mood는 delta를 합산**해서 한 번만 반영하도록 `Map<Mood, Double>`로 집계
+- `UserPreferenceRepository.findByUserIdAndMoodIn()` 신규 추가 — 합산된 mood들의 기존 점수를 배치조회 1회로 확보
+- `saveAll()` 1회로 반영 (없던 mood는 새로 생성, 있던 mood는 갱신)
+- 결과적으로 **placeId나 mood 개수와 무관하게 항상 쿼리 3번**(장소 배치조회 + preference 배치조회 + 저장)으로 고정됨
+- **검증**: 실제 요청으로 로그 확인 — `place_id in (?)`, `mood in (?)`, `update` 딱 3줄만 실행됨. `/summary` 조회로 점수 반영도 확인
+
 ## 변경된 파일
 - `build.gradle` — `micrometer-registry-prometheus` 추가
 - `application-local.yml` — `management.endpoints.web.exposure.include: health, prometheus` (local 전용)
@@ -154,5 +168,7 @@
 - `src/main/java/.../domain/trip/service/TripService.java`, `TripController.java`, `RedisConfig.java` — `GET /api/trips` 캐싱 + 5개 지점 즉시 무효화
 - `src/main/java/.../domain/trip/repository/TripPlaceRepository.java` — `findAllByIdInWithItineraryAndTrip()` 배치조회 추가
 - `src/main/java/.../domain/notification/service/NotificationService.java` — 알림 목록 N+1 제거, `recalculateSubsequentSchedules` 배치조회 전환
+- `src/main/java/.../domain/preference/repository/UserPreferenceRepository.java` — `findByUserIdAndMoodIn()` 배치조회 추가
+- `src/main/java/.../domain/preference/service/PreferenceService.java` — `applyFeedback()` N×3 쿼리를 고정 3쿼리로 축소
 - `monitoring/prometheus.yml`, `monitoring/grafana/provisioning/` — 로컬 APM 스택 설정
 - `k6/db-load-test.js` — 부하테스트 스크립트
