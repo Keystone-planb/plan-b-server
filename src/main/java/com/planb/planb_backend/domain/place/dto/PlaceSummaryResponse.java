@@ -1,10 +1,14 @@
 package com.planb.planb_backend.domain.place.dto;
 
+import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Getter;
+import lombok.NoArgsConstructor;
 
 @Getter
 @Builder
+@NoArgsConstructor
+@AllArgsConstructor
 public class PlaceSummaryResponse {
 
     private String  placeId;

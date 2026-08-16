@@ -294,6 +294,7 @@ public class PlaceService {
      * 장소 AI 요약 — DB reviewData에서 totalSummary + 플랫폼별 요약 반환
      * AI 분석이 완료된 장소는 실데이터, 미분석 장소는 null 반환
      */
+    @Cacheable(value = "placeSummary", key = "#placeId")
     public PlaceSummaryResponse getPlaceSummary(String placeId) {
         log.info("[Place] AI 요약 요청 - placeId: {}", placeId);
 
@@ -348,6 +349,7 @@ public class PlaceService {
      * PENDING  : DB에 레코드가 없거나 space 미분석 상태
      * COMPLETE : space/type/mood 분석 결과 존재
      */
+    @Cacheable(value = "placeAnalysisStatus", key = "#placeId")
     public PlaceAnalysisStatusResponse getAnalysisStatus(String placeId) {
         boolean complete = placeRepository.findByGooglePlaceId(placeId)
                 .map(p -> p.getSpace() != null)

@@ -50,7 +50,11 @@ public class RedisConfig implements CachingConfigurer {
 
         // 캐시별 TTL 설정
         Map<String, RedisCacheConfiguration> cacheConfigs = Map.of(
-                "placeDetail", defaultConfig.entryTtl(Duration.ofHours(1))   // 장소 상세: 1시간
+                "placeDetail", defaultConfig.entryTtl(Duration.ofHours(1)),   // 장소 상세: 1시간
+                // analysis-status: 프론트가 폴링하는 API → DB 커넥션 풀 부하테스트에서 병목 확인됨(hikaricp_connections_pending 최대 40)
+                // TTL 20초: AI 분석은 최소 수십 초 이상 걸리므로 짧은 지연은 체감상 문제 없음
+                "placeAnalysisStatus", defaultConfig.entryTtl(Duration.ofSeconds(20)),
+                "placeSummary", defaultConfig.entryTtl(Duration.ofMinutes(10))
         );
 
         return RedisCacheManager.builder(connectionFactory)

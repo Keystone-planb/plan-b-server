@@ -75,7 +75,7 @@ public class PlaceAnalysisService {
             log.info("[PlaceAnalysis] 자동 분석 완료 - googlePlaceId: {}", googlePlaceId);
 
             // 분석 완료 후 캐시 무효화 → 다음 상세 조회 시 AI 태그 포함된 최신 데이터 반환
-            evictPlaceDetailCache(googlePlaceId);
+            evictPlaceCaches(googlePlaceId);
 
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
@@ -91,6 +91,8 @@ public class PlaceAnalysisService {
                     p.setLastSyncedAt(LocalDateTime.now());
                     placeRepository.saveAndFlush(p);
                     log.info("[PlaceAnalysis] PENDING 고착 방지 — fallback 값 저장: {}", googlePlaceId);
+                    // fallback 저장도 status를 PENDING→COMPLETE로 바꾸는 변경이므로 캐시 무효화 필요
+                    evictPlaceCaches(googlePlaceId);
                 }
             });
         } finally {
@@ -120,22 +122,29 @@ public class PlaceAnalysisService {
             log.info("[PlaceAnalysis] 분석 데이터 초기화 완료 - googlePlaceId: {}", googlePlaceId);
         });
 
-        evictPlaceDetailCache(googlePlaceId);
+        evictPlaceCaches(googlePlaceId);
         triggerAnalysisAsync(googlePlaceId);
 
         log.info("[PlaceAnalysis] 재분석 트리거 완료 - googlePlaceId: {}", googlePlaceId);
     }
 
-    private void evictPlaceDetailCache(String googlePlaceId) {
-        try {
-            Cache cache = cacheManager.getCache("placeDetail");
-            if (cache != null) {
-                cache.evict(googlePlaceId);
-                log.info("[PlaceAnalysis] 캐시 무효화 완료 - googlePlaceId: {}", googlePlaceId);
+    /**
+     * 장소의 분석 상태가 바뀌는 모든 시점(분석 완료/fallback/재분석 초기화)에 호출
+     * placeDetail 외에 analysis-status/summary 폴링 캐시(TTL 20초~10분)도 즉시 무효화해서
+     * 캐시 TTL 만료를 기다리지 않고 다음 폴링 요청에 최신 상태가 반영되게 함
+     */
+    private void evictPlaceCaches(String googlePlaceId) {
+        for (String cacheName : List.of("placeDetail", "placeAnalysisStatus", "placeSummary")) {
+            try {
+                Cache cache = cacheManager.getCache(cacheName);
+                if (cache != null) {
+                    cache.evict(googlePlaceId);
+                }
+            } catch (Exception e) {
+                log.warn("[PlaceAnalysis] 캐시 무효화 실패 - cache={}, googlePlaceId={}: {}", cacheName, googlePlaceId, e.getMessage());
             }
-        } catch (Exception e) {
-            log.warn("[PlaceAnalysis] 캐시 무효화 실패 - googlePlaceId: {}: {}", googlePlaceId, e.getMessage());
         }
+        log.info("[PlaceAnalysis] 캐시 무효화 완료 - googlePlaceId: {}", googlePlaceId);
     }
 
     /**
