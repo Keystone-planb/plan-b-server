@@ -1,13 +1,19 @@
 package com.planb.planb_backend.domain.trip.dto;
 
 import com.planb.planb_backend.domain.trip.entity.Trip;
+import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Getter;
+import lombok.NoArgsConstructor;
 
 import java.time.LocalDate;
 
+// Redis 캐싱(tripList) 대상 — @NoArgsConstructor 없으면 Jackson이 역직렬화 못 해서
+// 캐시 GET이 매번 조용히 실패하고 DB로 폴백하는 버그가 생김 (PlaceAnalysisStatusResponse에서 겪었던 것과 동일)
 @Getter
 @Builder
+@NoArgsConstructor
+@AllArgsConstructor
 public class TripListResponse {
 
     private Long tripId;

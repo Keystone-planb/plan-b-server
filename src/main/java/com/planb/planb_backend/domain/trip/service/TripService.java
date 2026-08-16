@@ -20,6 +20,9 @@ import com.planb.planb_backend.domain.user.entity.User;
 import com.planb.planb_backend.domain.user.repository.UserRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.cache.Cache;
+import org.springframework.cache.CacheManager;
+import org.springframework.cache.annotation.Cacheable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -51,6 +54,19 @@ public class TripService {
     private final PlaceRepository placeRepository;
     private final PlaceAnalysisService placeAnalysisService;
     private final GooglePlaceApiService googlePlaceApiService;
+    private final CacheManager cacheManager;
+
+    /**
+     * GET /api/trips 응답을 유저별로 캐싱해뒀는데, 여행 생성/수정/삭제나 일정 추가/삭제로
+     * 목록에 영향이 가는 시점마다 호출해서 즉시 최신화 (컨트롤러가 허용하는 status 값 3종 고정 evict)
+     */
+    private void evictTripListCache(String email) {
+        Cache cache = cacheManager.getCache("tripList");
+        if (cache == null) return;
+        for (String status : List.of("ALL", "UPCOMING", "PAST")) {
+            cache.evict(email + ":" + status);
+        }
+    }
 
     /**
      * POST /api/trips — 여행 계획 생성
@@ -78,14 +94,24 @@ public class TripService {
             trip.getItineraries().add(itinerary);
         }
 
-        return TripSummaryResponse.from(tripRepository.save(trip));
+        Trip saved = tripRepository.save(trip);
+        evictTripListCache(email);
+        return TripSummaryResponse.from(saved);
     }
 
     /**
      * GET /api/trips — 내 여행 목록 조회 (status 필터)
      * status: UPCOMING / PAST / ALL
+     *
+     * 부하테스트에서 이 API가 동시 요청 시 HikariCP 풀(로컬 max=3)을 포화시키는 걸 확인 —
+     * 개인별 목록이라 analysis-status처럼 짧은 TTL만으로는 부족해서, 목록에 영향 주는
+     * 변경 시점(evictTripListCache)에 즉시 무효화하는 방식과 함께 사용
+     *
+     * 반환 타입이 TripListCacheEntry(List를 감싼 래퍼)인 이유는 TripListCacheEntry 클래스
+     * 주석 참고 — List<TripListResponse>를 그대로 캐싱하면 Jackson 역직렬화가 매번 실패함
      */
-    public List<TripListResponse> getMyTrips(String email, String status) {
+    @Cacheable(value = "tripList", key = "#email + ':' + #status.toUpperCase()")
+    public TripListCacheEntry getMyTrips(String email, String status) {
         User user = findUser(email);
         LocalDate today = LocalDate.now();
 
@@ -112,7 +138,7 @@ public class TripService {
                         row -> ((Long) row[1]).intValue()
                 ));
 
-        return trips.stream()
+        List<TripListResponse> responses = trips.stream()
                 .map(trip -> {
                     int placeCount = trip.getItineraries().stream()
                             .mapToInt(it -> placeCountByItineraryId.getOrDefault(it.getItineraryId(), 0))
@@ -120,6 +146,8 @@ public class TripService {
                     return TripListResponse.from(trip, placeCount);
                 })
                 .toList();
+
+        return TripListCacheEntry.builder().trips(responses).build();
     }
 
     /**
@@ -202,6 +230,7 @@ public class TripService {
             adjustItineraries(trip);
         }
 
+        evictTripListCache(email);
         return TripSummaryResponse.from(trip);
     }
 
@@ -243,6 +272,7 @@ public class TripService {
         User user = findUser(email);
         Trip trip = findTripByOwner(tripId, user);
         tripRepository.delete(trip);
+        evictTripListCache(email);
     }
 
     /**
@@ -289,6 +319,7 @@ public class TripService {
             }
         }
 
+        evictTripListCache(email);
         return saved;
     }
 
@@ -302,6 +333,7 @@ public class TripService {
         TripPlace tripPlace = tripPlaceRepository.findByIdAndUserEmail(tripPlaceId, email)
                 .orElseThrow(() -> new IllegalArgumentException("일정을 찾을 수 없거나 접근 권한이 없습니다."));
         tripPlaceRepository.delete(tripPlace);
+        evictTripListCache(email);
     }
 
     /**

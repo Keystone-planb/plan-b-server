@@ -43,7 +43,7 @@ public class TripController {
             @Parameter(description = "여행 상태 필터 (UPCOMING / PAST / ALL)", example = "ALL")
             @RequestParam(defaultValue = "ALL") String status,
             Authentication authentication) {
-        return ResponseEntity.ok(tripService.getMyTrips(authentication.getName(), status));
+        return ResponseEntity.ok(tripService.getMyTrips(authentication.getName(), status).getTrips());
     }
 
     @Operation(summary = "여행 상세 조회", description = "특정 여행의 전체 일차와 장소 목록을 반환합니다.")

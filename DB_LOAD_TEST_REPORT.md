@@ -107,6 +107,20 @@
 - 루프 진입 전 `request.getPlaces()`의 placeId를 모아 `findAllByGooglePlaceIdIn()` 1회로 기존 Place를 `Map<String, Place>`에 미리 인덱싱
 - 루프 안에서는 이 맵에서 조회하고, 없으면 기존과 동일하게 새 Place를 생성(create-if-missing 로직 그대로 유지) → 동작은 완전히 동일, 쿼리 횟수만 감소
 
+## 추가 최적화 — 여행 목록(`GET /api/trips`) 커넥션 풀 포화 해결
+
+### 원인 분석
+- N+1을 없앤 뒤에도, 이 API에 0→50명 동시 부하를 주면 응답시간이 평균 1.35초/p95 2.55초까지 치솟고 `hikaricp_connections_pending`이 다시 최대 41건까지 쌓임
+- 동시접속 없이 단독 요청했을 때는 0.15~0.24초 정도라, **쿼리 자체가 느린 게 아니라 로컬 커넥션 풀이 3개뿐이라 줄서서 기다리는 것**이 원인으로 확인됨 (Supabase Free 티어 제약을 반영한 값이라 풀 크기 자체를 늘리는 건 답이 아님)
+- `analysis-status`처럼 모두가 같은 값을 보는 API가 아니라 유저별로 다른 개인 데이터라, 단순 TTL 캐싱만으로는 "방금 여행 추가했는데 목록에 안 보임" 같은 문제가 생길 수 있어 추가 설계가 필요했음
+
+### 원인 해결
+- `RedisConfig`에 `tripList` 캐시 추가 (TTL 30초, 안전망 용도)
+- `TripService.getMyTrips()`에 `@Cacheable(key = "#email + ':' + #status")` 적용 — 유저+상태필터 조합별로 캐싱
+- **즉시 무효화**: `createTrip`/`updateTrip`/`deleteTrip`/`addLocation`/`removeTripPlace` — 목록에 실제로 영향을 주는 5개 지점에 `evictTripListCache(email)` 추가. TTL 만료를 기다리지 않고 변경 즉시 최신화되므로 "방금 바뀐 게 안 보이는" 문제 없음
+- **또 같은 버그 발견**: `List<TripListResponse>`를 `@Cacheable` 반환값으로 그대로 캐싱했더니, 이번엔 (기본 생성자 문제가 아니라) Jackson이 최상위 제네릭 컬렉션의 타입 정보를 못 살려서 `Unexpected token (START_ARRAY), expected VALUE_STRING` 에러로 매번 캐시 조회가 조용히 실패함. `TripListCacheEntry`(List를 감싼 POJO 래퍼)로 한 번 감싸서 해결 — 컨트롤러 쪽 API 응답 형태(`List<TripListResponse>`)는 그대로 유지, 캐싱 레이어에서만 래핑/언래핑
+- **검증**: 응답시간 평균 1.35s→12.36ms(약 110배), p95 2.55s→4.9ms(약 520배), 처리량 16→116 req/s, HikariCP pending 최대 41건→9건(초반 동시 캐시미스 구간 제외하면 사실상 해소)
+
 ## 변경된 파일
 - `build.gradle` — `micrometer-registry-prometheus` 추가
 - `application-local.yml` — `management.endpoints.web.exposure.include: health, prometheus` (local 전용)
@@ -118,5 +132,7 @@
 - `src/main/java/.../domain/trip/repository/TripPlaceRepository.java` — `countByItineraryIds()` 배치 집계 쿼리 추가
 - `src/main/java/.../domain/trip/dto/TripListResponse.java`, `TripService.java` — 여행 목록 조회 N+1 제거 (`GET /api/trips`)
 - `src/main/java/.../domain/trip/service/TripService.java` — `replaceTripPlace()`, `recalculateByDistanceMatrix()`의 반복 `findByGooglePlaceId` 호출을 배치조회로 변경
+- `src/main/java/.../domain/trip/dto/TripListCacheEntry.java` (신규) — `tripList` 캐시 직렬화용 래퍼
+- `src/main/java/.../domain/trip/service/TripService.java`, `TripController.java`, `RedisConfig.java` — `GET /api/trips` 캐싱 + 5개 지점 즉시 무효화
 - `monitoring/prometheus.yml`, `monitoring/grafana/provisioning/` — 로컬 APM 스택 설정
 - `k6/db-load-test.js` — 부하테스트 스크립트

@@ -54,7 +54,10 @@ public class RedisConfig implements CachingConfigurer {
                 // analysis-status: 프론트가 폴링하는 API → DB 커넥션 풀 부하테스트에서 병목 확인됨(hikaricp_connections_pending 최대 40)
                 // TTL 20초: AI 분석은 최소 수십 초 이상 걸리므로 짧은 지연은 체감상 문제 없음
                 "placeAnalysisStatus", defaultConfig.entryTtl(Duration.ofSeconds(20)),
-                "placeSummary", defaultConfig.entryTtl(Duration.ofMinutes(10))
+                "placeSummary", defaultConfig.entryTtl(Duration.ofMinutes(10)),
+                // 여행 목록: 유저별로 다른 데이터라 TTL은 짧게(30초, 안전망 용도) — 실제 최신성은
+                // TripService의 evictTripListCache()로 생성/수정/삭제 시점에 즉시 무효화해서 보장
+                "tripList", defaultConfig.entryTtl(Duration.ofSeconds(30))
         );
 
         return RedisCacheManager.builder(connectionFactory)
