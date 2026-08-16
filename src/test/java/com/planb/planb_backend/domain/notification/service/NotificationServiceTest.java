@@ -6,6 +6,8 @@ import com.planb.planb_backend.domain.place.entity.Place;
 import com.planb.planb_backend.domain.place.repository.PlaceRepository;
 import com.planb.planb_backend.domain.preference.service.PreferenceService;
 import com.planb.planb_backend.domain.recommendation.dto.UnifiedReplaceResponse;
+import com.planb.planb_backend.domain.trip.entity.Itinerary;
+import com.planb.planb_backend.domain.trip.entity.Trip;
 import com.planb.planb_backend.domain.trip.entity.TripPlace;
 import com.planb.planb_backend.domain.trip.repository.TripPlaceRepository;
 import com.planb.planb_backend.domain.user.entity.Role;
@@ -20,11 +22,14 @@ import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
+import java.time.LocalDate;
+import java.util.List;
 import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyList;
 import static org.mockito.Mockito.*;
 
 @ExtendWith(MockitoExtension.class)
@@ -141,6 +146,68 @@ class NotificationServiceTest {
                 notificationService.replacePlan(100L, 301L, "other@planb.com"))
                 .isInstanceOf(SecurityException.class)
                 .hasMessageContaining("본인의 알림만 접근");
+    }
+
+    // ──────────────────────────────────────────────────────
+    // getUnreadNotifications 테스트
+    // 2026-08-16 부하테스트에서 발견한 N+1 회귀 방지용 — 알림 개수만큼
+    // findItineraryDateById/findByIdWithItineraryAndTrip를 반복 호출하던 걸
+    // findAllByIdInWithItineraryAndTrip 배치조회 1회로 바꿨음
+    // ──────────────────────────────────────────────────────
+
+    @Test
+    @DisplayName("getUnreadNotifications: 알림이 여러 개여도 TripPlace 배치조회는 정확히 1번만 호출됨")
+    void getUnreadNotifications_batchesTripPlaceLookup() {
+        Trip trip = Trip.builder().tripId(1L).title("여행").user(user).build();
+
+        Notification activeNoti = notificationOf(101L, 1L, 501L);
+        Notification expiredNoti = notificationOf(102L, 1L, 502L);
+
+        when(notificationRepository.findByUserIdAndIsReadFalseOrderByCreatedAtDesc(1L))
+                .thenReturn(List.of(activeNoti, expiredNoti));
+
+        TripPlace activeTp = tripPlaceWithDate(501L, trip, LocalDate.now().plusDays(1));
+        TripPlace expiredTp = tripPlaceWithDate(502L, trip, LocalDate.now().minusDays(1));
+        when(tripPlaceRepository.findAllByIdInWithItineraryAndTrip(anyList()))
+                .thenReturn(List.of(activeTp, expiredTp));
+
+        when(placeRepository.findByGooglePlaceId(any())).thenReturn(Optional.empty());
+
+        List<com.planb.planb_backend.domain.notification.dto.NotificationResponse> result =
+                notificationService.getUnreadNotifications(1L);
+
+        // 만료된 알림(502)은 자동 읽음 처리돼서 결과에서 빠지고, 활성 알림(501)만 남음
+        assertThat(result).hasSize(1);
+        assertThat(result.get(0).getId()).isEqualTo(101L);
+
+        // 알림이 2개였지만 TripPlace 조회는 배치로 딱 1번 — 이게 깨지면 N+1이 부활한 것
+        verify(tripPlaceRepository, times(1)).findAllByIdInWithItineraryAndTrip(anyList());
+        // 예전에 알림마다 개별 호출하던 메서드는 이제 아예 호출 안 되어야 함
+        verify(tripPlaceRepository, never()).findItineraryDateById(any());
+
+        // 만료된 알림은 자동 읽음 처리됨
+        assertThat(expiredNoti.isRead()).isTrue();
+        assertThat(activeNoti.isRead()).isFalse();
+    }
+
+    private Notification notificationOf(Long id, Long userId, Long planId) {
+        Notification n = new Notification();
+        n.setId(id);
+        n.setUserId(userId);
+        n.setPlanId(planId);
+        n.setAlternativePlaceIds("[]");
+        n.setRead(false);
+        return n;
+    }
+
+    private TripPlace tripPlaceWithDate(Long tripPlaceId, Trip trip, LocalDate date) {
+        Itinerary itinerary = Itinerary.builder().trip(trip).day(1).date(date).build();
+        return TripPlace.builder()
+                .tripPlaceId(tripPlaceId)
+                .itinerary(itinerary)
+                .placeId("ChIJsome")
+                .name("장소")
+                .build();
     }
 
     // ──────────────────────────────────────────────────────
