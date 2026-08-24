@@ -102,14 +102,17 @@ public class OpenAiAnalysisService {
             if (!errors.isEmpty()) {
                 repairAttempted = true;
                 log.warn("AI 응답 검증 실패 (Place: {}) — 재질의 시도: {}", placeName, errors);
-                Map<String, Object> repaired = attemptRepair(prompt, content, errors, retryCounter);
+                RepairOutcome repaired = attemptRepair(prompt, content, errors, retryCounter);
 
                 if (repaired == null) {
                     logCall(placeName, promptTokens, completionTokens, startedAt, retryCounter.get(),
                             true, false, true);
                     return fallbackResponse();
                 }
-                parsed = repaired;
+                parsed = repaired.parsed();
+                // 재질의 왕복분 토큰도 누적 — 안 더하면 실제로 돈 나간 재질의 호출이 비용 집계에서 빠짐
+                promptTokens = sumTokens(promptTokens, repaired.promptTokens());
+                completionTokens = sumTokens(completionTokens, repaired.completionTokens());
                 repairSucceeded = true;
             }
 
@@ -171,8 +174,8 @@ public class OpenAiAnalysisService {
      * [Self-repair] 검증 실패 이유를 모델에게 그대로 알려주고, 같은 대화 맥락(원 프롬프트 + 잘못된 응답)에서
      * 스키마를 지켜 다시 답하게 한다. 1회만 시도 — 재귀적으로 반복하면 무한 재질의/비용 폭주 위험
      */
-    private Map<String, Object> attemptRepair(String originalPrompt, String invalidContent,
-                                               List<String> errors, AtomicInteger retryCounter) {
+    private RepairOutcome attemptRepair(String originalPrompt, String invalidContent,
+                                         List<String> errors, AtomicInteger retryCounter) {
         String repairInstruction = "방금 응답이 아래 이유로 형식에 맞지 않았다:\n"
                 + errors.stream().map(e -> "- " + e).collect(Collectors.joining("\n"))
                 + "\n\n같은 입력 데이터를 기준으로, 지정된 JSON 스키마와 enum 값만 사용해서 다시 응답하라.";
@@ -185,16 +188,28 @@ public class OpenAiAnalysisService {
                     Map.of("role", "user", "content", repairInstruction)
             ), retryCounter);
 
+            Integer[] usage = extractUsage(response);
             String content = extractContent(response);
             if (content == null) return null;
 
             Map<String, Object> parsed = objectMapper.readValue(content, Map.class);
-            return validate(parsed).isEmpty() ? parsed : null;
+            if (!validate(parsed).isEmpty()) return null;
+
+            return new RepairOutcome(parsed, usage[0], usage[1]);
 
         } catch (Exception e) {
             log.warn("AI 응답 재질의(self-repair) 실패: {}", e.getMessage());
             return null;
         }
+    }
+
+    private record RepairOutcome(Map<String, Object> parsed, Integer promptTokens, Integer completionTokens) {
+    }
+
+    private Integer sumTokens(Integer a, Integer b) {
+        if (a == null) return b;
+        if (b == null) return a;
+        return a + b;
     }
 
     /**
