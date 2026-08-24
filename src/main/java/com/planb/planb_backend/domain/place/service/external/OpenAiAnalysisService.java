@@ -1,6 +1,9 @@
 package com.planb.planb_backend.domain.place.service.external;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.planb.planb_backend.domain.trip.entity.Mood;
+import com.planb.planb_backend.domain.trip.entity.PlaceType;
+import com.planb.planb_backend.domain.trip.entity.Space;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.client.reactive.ReactorClientHttpConnector;
@@ -11,16 +14,24 @@ import reactor.netty.resources.ConnectionProvider;
 import reactor.util.retry.Retry;
 
 import java.time.Duration;
+import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.atomic.AtomicInteger;
+import java.util.stream.Collectors;
 
 @Slf4j
 @Service
 public class OpenAiAnalysisService {
 
-    @Value("${openai.api-key:}")
-    private String apiKey;
+    private static final String MODEL = "gpt-4o-mini";
 
+    private static final String SYSTEM_PROMPT =
+            "You are a factual travel data analyst. Never invent information not present in the source data.";
+
+    private final String apiKey;
+    private final AiCallLogService aiCallLogService;
     private final ObjectMapper objectMapper = new ObjectMapper();
 
     // [커넥션 풀] 좀비 연결 방지
@@ -33,20 +44,222 @@ public class OpenAiAnalysisService {
             .evictInBackground(Duration.ofSeconds(30))
             .build();
 
-    private final WebClient webClient = WebClient.builder()
-            .baseUrl("https://api.openai.com/v1")
-            .clientConnector(new ReactorClientHttpConnector(
-                    HttpClient.create(OPENAI_POOL)
-                            .responseTimeout(Duration.ofSeconds(20))))
-            .build();
+    private final WebClient webClient;
+
+    public OpenAiAnalysisService(
+            @Value("${openai.api-key:}") String apiKey,
+            @Value("${openai.base-url:https://api.openai.com/v1}") String baseUrl,
+            AiCallLogService aiCallLogService) {
+        this.apiKey = apiKey;
+        this.aiCallLogService = aiCallLogService;
+        this.webClient = WebClient.builder()
+                .baseUrl(baseUrl)
+                .clientConnector(new ReactorClientHttpConnector(
+                        HttpClient.create(OPENAI_POOL)
+                                .responseTimeout(Duration.ofSeconds(20))))
+                .build();
+    }
 
     /**
      * GPT-4o-mini로 장소 리뷰 분석 요청
      * 반환: space, type, mood, review_data, summaries(플랫폼별), reasoning(내부 사고용 — DB 저장 안 함)
+     *
+     * [하네스 흐름]
+     * 1) 1차 호출 → JSON 파싱 → 스키마/enum 검증
+     * 2) 검증 실패 시 "왜 틀렸는지"를 알려주는 재질의(self-repair) 1회 시도
+     * 3) 그래도 실패하면 안전한 기본값(fallback)으로 대체
+     * 매 호출의 지연시간/재시도횟수/재질의여부/토큰 사용량은 AiCallLogService에 기록되어
+     * /api/admin/ai-metrics 로 조회 가능
      */
     public Map<String, Object> requestAnalysis(String placeName, String category, Map<String, List<String>> reviews) {
+        long startedAt = System.currentTimeMillis();
+        AtomicInteger retryCounter = new AtomicInteger(0);
+        String prompt = buildPrompt(placeName, category, buildReviewSection(reviews));
 
-        // [A] 리뷰 데이터를 번호 목록 형식으로 구조화 (기존 reviews.toString() 대체)
+        boolean repairAttempted = false;
+        boolean repairSucceeded = false;
+        Integer promptTokens = null;
+        Integer completionTokens = null;
+
+        try {
+            Map<String, Object> response = callOpenAi(List.of(
+                    Map.of("role", "system", "content", SYSTEM_PROMPT),
+                    Map.of("role", "user", "content", prompt)
+            ), retryCounter);
+
+            Integer[] usage = extractUsage(response);
+            promptTokens = usage[0];
+            completionTokens = usage[1];
+
+            String content = extractContent(response);
+            if (content == null) {
+                throw new IllegalStateException("OpenAI 응답에 choices가 없습니다.");
+            }
+
+            Map<String, Object> parsed = objectMapper.readValue(content, Map.class);
+            List<String> errors = validate(parsed);
+
+            if (!errors.isEmpty()) {
+                repairAttempted = true;
+                log.warn("AI 응답 검증 실패 (Place: {}) — 재질의 시도: {}", placeName, errors);
+                Map<String, Object> repaired = attemptRepair(prompt, content, errors, retryCounter);
+
+                if (repaired == null) {
+                    logCall(placeName, promptTokens, completionTokens, startedAt, retryCounter.get(),
+                            true, false, true);
+                    return fallbackResponse();
+                }
+                parsed = repaired;
+                repairSucceeded = true;
+            }
+
+            logCall(placeName, promptTokens, completionTokens, startedAt, retryCounter.get(),
+                    repairAttempted, repairSucceeded, false);
+            return parsed;
+
+        } catch (Exception e) {
+            log.error("AI 분석 실패 (Place: {}): {}", placeName, e.getMessage());
+            logCall(placeName, promptTokens, completionTokens, startedAt, retryCounter.get(),
+                    repairAttempted, repairSucceeded, true);
+            return fallbackResponse();
+        }
+    }
+
+    /**
+     * [출력 검증] 응답이 우리가 정의한 스키마(enum 값 등)를 지켰는지 확인.
+     * package-private: 단위 테스트(OpenAiAnalysisServiceValidationTest)에서 네트워크 호출 없이 직접 검증
+     */
+    List<String> validate(Map<String, Object> parsed) {
+        List<String> errors = new ArrayList<>();
+        if (parsed == null) {
+            errors.add("응답이 비어 있습니다.");
+            return errors;
+        }
+
+        errors.addAll(validateEnumField(parsed, "space", Space.class));
+        errors.addAll(validateEnumField(parsed, "type", PlaceType.class));
+        errors.addAll(validateEnumField(parsed, "mood", Mood.class));
+
+        Object reviewData = parsed.get("review_data");
+        if (!(reviewData instanceof String) || ((String) reviewData).isBlank()) {
+            errors.add("review_data 필드가 없거나 비어 있습니다.");
+        }
+
+        Object summaries = parsed.get("summaries");
+        if (!(summaries instanceof Map) || ((Map<?, ?>) summaries).isEmpty()) {
+            errors.add("summaries 필드가 없거나 객체가 아닙니다.");
+        }
+
+        return errors;
+    }
+
+    private <E extends Enum<E>> List<String> validateEnumField(Map<String, Object> parsed, String field, Class<E> enumType) {
+        Object value = parsed.get(field);
+        if (value == null) {
+            return List.of(field + " 필드가 없습니다.");
+        }
+        try {
+            Enum.valueOf(enumType, value.toString().trim().toUpperCase());
+            return List.of();
+        } catch (IllegalArgumentException e) {
+            return List.of(field + " 값이 유효하지 않습니다: '" + value
+                    + "' (허용값: " + Arrays.toString(enumType.getEnumConstants()) + ")");
+        }
+    }
+
+    /**
+     * [Self-repair] 검증 실패 이유를 모델에게 그대로 알려주고, 같은 대화 맥락(원 프롬프트 + 잘못된 응답)에서
+     * 스키마를 지켜 다시 답하게 한다. 1회만 시도 — 재귀적으로 반복하면 무한 재질의/비용 폭주 위험
+     */
+    private Map<String, Object> attemptRepair(String originalPrompt, String invalidContent,
+                                               List<String> errors, AtomicInteger retryCounter) {
+        String repairInstruction = "방금 응답이 아래 이유로 형식에 맞지 않았다:\n"
+                + errors.stream().map(e -> "- " + e).collect(Collectors.joining("\n"))
+                + "\n\n같은 입력 데이터를 기준으로, 지정된 JSON 스키마와 enum 값만 사용해서 다시 응답하라.";
+
+        try {
+            Map<String, Object> response = callOpenAi(List.of(
+                    Map.of("role", "system", "content", SYSTEM_PROMPT),
+                    Map.of("role", "user", "content", originalPrompt),
+                    Map.of("role", "assistant", "content", invalidContent),
+                    Map.of("role", "user", "content", repairInstruction)
+            ), retryCounter);
+
+            String content = extractContent(response);
+            if (content == null) return null;
+
+            Map<String, Object> parsed = objectMapper.readValue(content, Map.class);
+            return validate(parsed).isEmpty() ? parsed : null;
+
+        } catch (Exception e) {
+            log.warn("AI 응답 재질의(self-repair) 실패: {}", e.getMessage());
+            return null;
+        }
+    }
+
+    /**
+     * OpenAI Chat Completions 호출 (원 요청/재질의 공용)
+     * [재시도] ECONNRESET(연결 끊김) + 429(Rate Limit 초과) 모두 대응
+     * backoff: 첫 재시도 1초 → 2초 → 4초 간격 (합계 7초)
+     * SSE orTimeout(30s) 내에서 재시도 + 응답(20초) 여유분 확보
+     */
+    private Map<String, Object> callOpenAi(List<Map<String, Object>> messages, AtomicInteger retryCounter) {
+        return webClient.post()
+                .uri("/chat/completions")
+                .header("Authorization", "Bearer " + apiKey)
+                .bodyValue(Map.of(
+                        "model", MODEL,
+                        "messages", messages,
+                        "response_format", Map.of("type", "json_object")
+                ))
+                .retrieve()
+                .bodyToMono(Map.class)
+                .retryWhen(Retry.backoff(3, Duration.ofSeconds(1))
+                        .filter(e -> e.getMessage() != null && (
+                                e.getMessage().contains("Connection reset") ||
+                                e.getMessage().contains("429")))
+                        .doBeforeRetry(signal -> retryCounter.incrementAndGet()))
+                .block(Duration.ofSeconds(20)); // OpenAI 단일 응답 타임아웃 (재시도 7초 + 응답 20초 = 27초 < orTimeout 30초)
+    }
+
+    @SuppressWarnings("unchecked")
+    private String extractContent(Map<String, Object> response) {
+        if (response == null || !response.containsKey("choices")) return null;
+        List<Map<String, Object>> choices = (List<Map<String, Object>>) response.get("choices");
+        if (choices == null || choices.isEmpty()) return null;
+        return (String) ((Map<String, Object>) choices.get(0).get("message")).get("content");
+    }
+
+    @SuppressWarnings("unchecked")
+    private Integer[] extractUsage(Map<String, Object> response) {
+        if (response == null || !response.containsKey("usage")) return new Integer[]{null, null};
+        Map<String, Object> usage = (Map<String, Object>) response.get("usage");
+        Integer prompt = usage.get("prompt_tokens") != null ? ((Number) usage.get("prompt_tokens")).intValue() : null;
+        Integer completion = usage.get("completion_tokens") != null ? ((Number) usage.get("completion_tokens")).intValue() : null;
+        return new Integer[]{prompt, completion};
+    }
+
+    private void logCall(String placeName, Integer promptTokens, Integer completionTokens, long startedAt,
+                          int retryCount, boolean repairAttempted, boolean repairSucceeded, boolean fallbackTriggered) {
+        long latencyMs = System.currentTimeMillis() - startedAt;
+        aiCallLogService.record(placeName, MODEL, promptTokens, completionTokens, latencyMs,
+                retryCount, repairAttempted, repairSucceeded, fallbackTriggered);
+    }
+
+    private Map<String, Object> fallbackResponse() {
+        return Map.of(
+                "space", "INDOOR",
+                "type", "FOOD",
+                "mood", "LOCAL",
+                "review_data", "분석된 리뷰 정보가 없습니다.",
+                "summaries", Map.of(
+                        "Google", "데이터 부족으로 분석 불가",
+                        "Naver", "데이터 부족으로 분석 불가"
+                )
+        );
+    }
+
+    private String buildReviewSection(Map<String, List<String>> reviews) {
         StringBuilder reviewSection = new StringBuilder();
         reviews.forEach((platform, reviewList) -> {
             boolean isEmpty = reviewList == null || reviewList.isEmpty()
@@ -62,8 +275,11 @@ public class OpenAiAnalysisService {
             }
             reviewSection.append("\n");
         });
+        return reviewSection.toString();
+    }
 
-        String prompt = String.format("""
+    private String buildPrompt(String placeName, String category, String reviewSection) {
+        return String.format("""
             너는 여행 대체 일정 추천 서비스 'PLAN B'의 전문 데이터 분석가다.
             아래 리뷰 데이터를 분석하여 장소의 특징을 파악하고 지정된 JSON 형식으로만 응답하라.
 
@@ -124,48 +340,6 @@ public class OpenAiAnalysisService {
             카테고리: %s
 
             %s
-            """, placeName, category, reviewSection.toString());
-
-        try {
-            Map<String, Object> response = webClient.post()
-                    .uri("/chat/completions")
-                    .header("Authorization", "Bearer " + apiKey)
-                    .bodyValue(Map.of(
-                            "model", "gpt-4o-mini",
-                            "messages", List.of(
-                                    Map.of("role", "system", "content", "You are a factual travel data analyst. Never invent information not present in the source data."),
-                                    Map.of("role", "user", "content", prompt)),
-                            "response_format", Map.of("type", "json_object")
-                    ))
-                    .retrieve()
-                    .bodyToMono(Map.class)
-                    // [재시도] ECONNRESET(연결 끊김) + 429(Rate Limit 초과) 모두 대응
-                    // backoff: 첫 재시도 1초 → 2초 → 4초 간격 (합계 7초)
-                    // SSE orTimeout(30s) 내에서 재시도 + 응답(20초) 여유분 확보
-                    .retryWhen(Retry.backoff(3, Duration.ofSeconds(1))
-                            .filter(e -> e.getMessage() != null && (
-                                    e.getMessage().contains("Connection reset") ||
-                                    e.getMessage().contains("429"))))
-                    .block(Duration.ofSeconds(20)); // OpenAI 단일 응답 타임아웃 (재시도 7초 + 응답 20초 = 27초 < orTimeout 30초)
-
-            if (response != null && response.containsKey("choices")) {
-                List<Map<String, Object>> choices = (List<Map<String, Object>>) response.get("choices");
-                String content = (String) ((Map<String, Object>) choices.get(0).get("message")).get("content");
-                return objectMapper.readValue(content, Map.class);
-            }
-        } catch (Exception e) {
-            log.error("AI 분석 실패 (Place: {}): {}", placeName, e.getMessage());
-        }
-
-        return Map.of(
-                "space", "INDOOR",
-                "type", "FOOD",
-                "mood", "LOCAL",
-                "review_data", "분석된 리뷰 정보가 없습니다.",
-                "summaries", Map.of(
-                        "Google", "데이터 부족으로 분석 불가",
-                        "Naver", "데이터 부족으로 분석 불가"
-                )
-        );
+            """, placeName, category, reviewSection);
     }
 }
