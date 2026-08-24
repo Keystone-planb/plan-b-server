@@ -37,6 +37,9 @@ out/
 
 ### VS Code ###
 .vscode/
+
+### macOS ###
+.DS_Store
 # 보안 설정 파일 무시 (API 키, DB 비밀번호 등)
 # application.yml      → 환경변수 플레이스홀더만 남아 있어 커밋 가능
 # application-local.yml → 실제 시크릿 값 포함, 절대 커밋 금지
