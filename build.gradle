@@ -46,5 +46,18 @@ dependencies {
     implementation 'org.hibernate.orm:hibernate-spatial'
 }
 tasks.named('test') {
-    useJUnitPlatform()
+    // eval 태그(AI 프롬프트 품질 회귀 테스트)는 실제 OpenAI API를 호출하므로 기본 test에서 제외
+    useJUnitPlatform {
+        excludeTags 'eval'
+    }
+}
+
+tasks.register('evalTest', Test) {
+    description = 'AI 프롬프트 품질 회귀 테스트 — 실제 OpenAI API 호출 (OPENAI_API_KEY 필요, 기본 test에서는 제외됨)'
+    group = 'verification'
+    testClassesDirs = sourceSets.test.output.classesDirs
+    classpath = sourceSets.test.runtimeClasspath
+    useJUnitPlatform {
+        includeTags 'eval'
+    }
 }
