@@ -1,5 +1,6 @@
 package com.planb.planb_backend.admin;
 
+import com.planb.planb_backend.domain.place.service.external.AiCallLogService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import lombok.RequiredArgsConstructor;
@@ -16,6 +17,7 @@ import java.util.Map;
 public class AdminController {
 
     private final AdminService adminService;
+    private final AiCallLogService aiCallLogService;
 
     // ── 스케줄러 수동 실행 ────────────────────────────────────────────────────
 
@@ -47,6 +49,18 @@ public class AdminController {
     @GetMapping("/stats/dna")
     public ResponseEntity<AdminService.AdminDnaStatsDto> getDnaStats() {
         return ResponseEntity.ok(adminService.getDnaStats());
+    }
+
+    // ── AI 관측성 ─────────────────────────────────────────────────────────
+
+    @Operation(
+        summary = "AI 호출 관측성 지표 조회",
+        description = "최근 N일간 OpenAI 호출의 평균 지연시간, 재시도/재질의(self-repair)/폴백 비율, 토큰 사용량과 예상 비용(USD)을 집계합니다."
+    )
+    @GetMapping("/ai-metrics")
+    public ResponseEntity<AiCallLogService.AiMetricsSummary> getAiMetrics(
+            @RequestParam(defaultValue = "7") int days) {
+        return ResponseEntity.ok(aiCallLogService.getSummary(days));
     }
 
     // ── 사용자 관리 ─────────────────────────────────────────────────────────
