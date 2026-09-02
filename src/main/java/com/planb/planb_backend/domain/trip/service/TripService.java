@@ -69,6 +69,16 @@ public class TripService {
     }
 
     /**
+     * GET /api/trips/{id}/days/{day} 캐시 무효화 — 해당 일차 장소/시간이 바뀌는
+     * 모든 쓰기 지점(addLocation, clearDayLocations, confirmOptimize, confirmRecovery)에서 호출
+     */
+    private void evictTripDayCache(String email, Long tripId, int day) {
+        Cache cache = cacheManager.getCache("tripDayItinerary");
+        if (cache == null) return;
+        cache.evict(email + ":" + tripId + ":" + day);
+    }
+
+    /**
      * POST /api/trips — 여행 계획 생성
      * 시작일~종료일 기준으로 Itinerary(일차)를 자동 생성
      */
@@ -185,7 +195,12 @@ public class TripService {
 
     /**
      * GET /api/trips/{id}/days/{day} — 특정 일차 단건 조회
+     *
+     * AI 서버(recovery/optimize)가 매 SSE 요청마다 이 API로 콜백해서 일정을 가져오는데,
+     * 그 트래픽이 그대로 HikariCP 풀을 잠식하는 걸 완화하기 위해 15초 TTL 캐싱 적용.
+     * 실제 최신성은 evictTripDayCache()로 이 일차가 바뀌는 시점에 즉시 무효화해서 보장
      */
+    @Cacheable(value = "tripDayItinerary", key = "#email + ':' + #tripId + ':' + #day")
     public TripDetailResponse.ItineraryResponse getDayDetail(String email, Long tripId, int day) {
         User user = findUser(email);
         Trip trip = findTripByOwner(tripId, user);
@@ -320,6 +335,7 @@ public class TripService {
         }
 
         evictTripListCache(email);
+        evictTripDayCache(email, tripId, day);
         return saved;
     }
 
@@ -640,6 +656,7 @@ public class TripService {
         Itinerary itinerary = itineraryRepository.findByTripAndDay(trip, day)
                 .orElseThrow(() -> new IllegalArgumentException(day + "일차 일정을 찾을 수 없습니다."));
         itinerary.getPlaces().clear();
+        evictTripDayCache(email, tripId, day);
     }
 
     /**
@@ -717,6 +734,8 @@ public class TripService {
 
         log.info("[OptimizeConfirm] tripPlaceId={} → newPlaceId={} newName={} 교체 완료, 영향 장소={}개",
                 tripPlaceId, request.getNewPlaceId(), request.getNewName(), updatedSchedules.size());
+
+        evictTripDayCache(email, target.getItinerary().getTrip().getTripId(), target.getItinerary().getDay());
 
         return OptimizeConfirmResponse.builder()
                 .message("장소 교체 완료")
@@ -904,6 +923,8 @@ public class TripService {
 
         log.info("[RecoveryConfirm] tripId={} day={} 장소 교체={}개 시간 업데이트={}개",
                 tripId, day, changedCount, request.getPlaces().size());
+
+        evictTripDayCache(email, tripId, day);
     }
 
     /**

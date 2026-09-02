@@ -1,5 +1,8 @@
 package com.planb.planb_backend.config;
 
+import io.micrometer.core.instrument.MeterRegistry;
+import io.micrometer.core.instrument.binder.jvm.ExecutorServiceMetrics;
+import lombok.RequiredArgsConstructor;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.scheduling.annotation.EnableAsync;
@@ -16,11 +19,18 @@ import java.util.concurrent.ThreadPoolExecutor;
  *   → core=7 → 3으로 축소: 분석 속도보다 서버 안정성 우선
  *   → max=5: HikariCP 커넥션(10개) 내에서 일반 요청과 공존 가능
  * - 작업 종료 대기: graceful shutdown 보장
+ *
+ * 각 executor는 ExecutorServiceMetrics로 Micrometer에 등록해 active/queued/pool.size를
+ * /actuator/prometheus로 노출 — 포화(DiscardPolicy/AbortPolicy 발동)를 에러 로그가 아니라
+ * Grafana에서 사전에 확인할 수 있게 함
  */
 @EnableAsync
 @EnableScheduling
 @Configuration
+@RequiredArgsConstructor
 public class AsyncConfig {
+
+    private final MeterRegistry meterRegistry;
 
     @Bean(name = "analysisExecutor")
     public Executor analysisExecutor() {
@@ -37,6 +47,7 @@ public class AsyncConfig {
         // HTTP 요청 스레드의 traceId를 분석 스레드로 전파
         executor.setTaskDecorator(new MdcTaskDecorator());
         executor.initialize();
+        ExecutorServiceMetrics.monitor(meterRegistry, executor.getThreadPoolExecutor(), "analysisExecutor");
         return executor;
     }
 
@@ -58,6 +69,7 @@ public class AsyncConfig {
         executor.setRejectedExecutionHandler(new ThreadPoolExecutor.DiscardOldestPolicy());
         executor.setTaskDecorator(new MdcTaskDecorator());
         executor.initialize();
+        ExecutorServiceMetrics.monitor(meterRegistry, executor.getThreadPoolExecutor(), "placeAutoAnalysisExecutor");
         return executor;
     }
 
@@ -81,6 +93,7 @@ public class AsyncConfig {
         // HTTP 요청 스레드의 traceId를 스트리밍 스레드로 전파
         executor.setTaskDecorator(new MdcTaskDecorator());
         executor.initialize();
+        ExecutorServiceMetrics.monitor(meterRegistry, executor.getThreadPoolExecutor(), "streamingExecutor");
         return executor;
     }
 }

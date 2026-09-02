@@ -322,10 +322,19 @@ public class RecommendationService {
             log.warn("[병렬 분석 취합 오류]: {}", e.getMessage());
         }
 
-        List<Place> results = futures.stream()
-                .map(f -> f.getNow(null))   // 완료됐으면 결과, 아직이면 null
-                .filter(Objects::nonNull)
-                .collect(Collectors.toList());
+        // SSE 스트리밍 경로(doStreamAsync)엔 이미 "analysisExecutor DiscardPolicy 또는 분석 지연"
+        // 로그가 있는데, 이 동기 경로엔 대칭되는 로그가 없어서 왜 결과가 줄었는지 알 수 없었음 →
+        // top7과 futures를 인덱스로 짝지어 어떤 장소가 왜 빠졌는지 남김
+        List<Place> results = new ArrayList<>();
+        for (int i = 0; i < top7.size(); i++) {
+            Place analyzed = futures.get(i).getNow(null);
+            if (analyzed == null) {
+                log.warn("[병렬 분석 미완료] {} — analysisExecutor 포화(DiscardPolicy) 또는 {}초 타임아웃으로 결과 없음, 목록에서 제외",
+                        top7.get(i).getName(), ANALYSIS_TIMEOUT_SEC);
+                continue;
+            }
+            results.add(analyzed);
+        }
 
         log.info("[STEP 6] 병렬 분석 완료: {}개 취합", results.size());
         return results;

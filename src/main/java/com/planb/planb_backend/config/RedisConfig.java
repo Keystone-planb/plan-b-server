@@ -57,7 +57,10 @@ public class RedisConfig implements CachingConfigurer {
                 "placeSummary", defaultConfig.entryTtl(Duration.ofMinutes(10)),
                 // 여행 목록: 유저별로 다른 데이터라 TTL은 짧게(30초, 안전망 용도) — 실제 최신성은
                 // TripService의 evictTripListCache()로 생성/수정/삭제 시점에 즉시 무효화해서 보장
-                "tripList", defaultConfig.entryTtl(Duration.ofSeconds(30))
+                "tripList", defaultConfig.entryTtl(Duration.ofSeconds(30)),
+                // 일차 상세: AI 서버(recovery/optimize)가 매 요청마다 GET /api/trips/{id}/days/{day}로
+                // 콜백하면서 HikariCP 풀을 잠식하는 걸 완화하기 위해 추가. TTL 15초 + 쓰기 시점 즉시 무효화
+                "tripDayItinerary", defaultConfig.entryTtl(Duration.ofSeconds(15))
         );
 
         return RedisCacheManager.builder(connectionFactory)
